@@ -95,6 +95,17 @@ Return ONLY the complete updated `config.json` object.
             with open("config.json", "w") as f:
                 json.dump(new_config, f, indent=2)
             print("config.json has been updated locally.")
+            
+            # Extract date from issue title for the PR title
+            # Title format: "Uncategorized Stars: 2026-W16"
+            issue_title = issue.get("title", "")
+            date_suffix = issue_title.split(": ")[-1] if ": " in issue_title else ""
+            
+            if "GITHUB_OUTPUT" in os.environ:
+                with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+                    f.write(f"date_suffix={date_suffix}\n")
+                    f.write(f"issue_num={issue_number}\n")
+                    
         except Exception as e:
             print(f"Failed to parse DeepSeek response as JSON: {e}")
             print(new_config_json)
