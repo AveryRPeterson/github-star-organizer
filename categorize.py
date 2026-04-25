@@ -8,15 +8,19 @@ LISTS = {
     "Tools & CLI": "UL_kwDOAHb0k84AeBvN",
     "Hardware & Keyboards": "UL_kwDOAHb0k84AeBvO",
     "Android & Termux": "UL_kwDOAHb0k84AeBvP",
-    "3D Printing & CAD": "UL_kwDOAHb0k84AeBvT"
+    "3D Printing & CAD": "UL_kwDOAHb0k84AeBvT",
+    "OS & Customization": "UL_kwDOAHb0k84AeBxQ",
+    "Dev Tools & Frameworks": "UL_kwDOAHb0k84AeBxR"
 }
 
 KEYWORDS = {
-    "AI Agents & LLMs": ["ai", "llm", "agent", "autonomous", "gpt", "claude", "inference", "machine-learning", "deep-learning", "anthropic", "openai", "mcp", "skills"],
-    "Tools & CLI": ["cli", "terminal", "shell", "fish", "prompt", "tui", "utility", "tool", "plugin", "manager"],
-    "Hardware & Keyboards": ["keyboard", "hardware", "ergonomic", "split-keyboard", "mechanical-keyboard"],
-    "Android & Termux": ["android", "termux", "apk", "root", "adb"],
-    "3D Printing & CAD": ["3d", "cad", "scad", "printing", "printer", "mesh", "splat", "gaussian", "stl", "marlin", "voron"]
+    "AI Agents & LLMs": ["ai", "llm", "agent", "autonomous", "gpt", "claude", "inference", "machine-learning", "deep-learning", "anthropic", "openai", "mcp", "skills", "agentic", "transformers", "pytorch", "tensorflow", "rag", "embeddings", "ollama", "vllm", "diffusion", "chatbot"],
+    "Tools & CLI": ["cli", "terminal", "shell", "fish", "prompt", "tui", "utility", "tool", "plugin", "manager", "zsh", "bash", "tmux", "git", "vim", "neovim", "editor", "config", "dotfiles", "starship", "fisher"],
+    "Hardware & Keyboards": ["keyboard", "hardware", "ergonomic", "split-keyboard", "mechanical-keyboard", "qmk", "zmk", "firmware", "pcb", "kicad", "keycap"],
+    "Android & Termux": ["android", "termux", "apk", "root", "adb", "magisk", "xposed", "lineageos", "recovery", "bootloader", "shizuku"],
+    "3D Printing & CAD": ["3d", "cad", "scad", "printing", "printer", "mesh", "splat", "gaussian", "stl", "marlin", "voron", "klipper", "cura", "prusaslicer", "blender", "modeling", "cnc", "openscad"],
+    "OS & Customization": ["linux", "kernel", "boot", "grub", "ventoy", "theme", "catppuccin", "dracula", "nord", "wallpaper", "desktop", "font", "nerd-font", "icon", "styling", "customization"],
+    "Dev Tools & Frameworks": ["framework", "javascript", "typescript", "python", "rust", "go", "nodejs", "react", "vue", "svelte", "docker", "kubernetes", "aws", "firebase", "api", "backend", "frontend", "web", "compiler", "runtime", "bun", "yarn", "npm"]
 }
 
 def run_query(query, variables=None):
@@ -91,6 +95,10 @@ def categorize(repo):
         return "Hardware & Keyboards"
     if any(kw in combined for kw in KEYWORDS["Tools & CLI"]):
         return "Tools & CLI"
+    if any(kw in combined for kw in KEYWORDS["OS & Customization"]):
+        return "OS & Customization"
+    if any(kw in combined for kw in KEYWORDS["Dev Tools & Frameworks"]):
+        return "Dev Tools & Frameworks"
     return None
 
 def main():
