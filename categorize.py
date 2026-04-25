@@ -17,9 +17,9 @@ KEYWORDS = {
     "AI Agents & LLMs": ["ai", "llm", "agent", "autonomous", "gpt", "claude", "inference", "machine-learning", "deep-learning", "anthropic", "openai", "mcp", "skills", "agentic", "transformers", "pytorch", "tensorflow", "rag", "embeddings", "ollama", "vllm", "diffusion", "chatbot"],
     "Tools & CLI": ["cli", "terminal", "shell", "fish", "prompt", "tui", "utility", "tool", "plugin", "manager", "zsh", "bash", "tmux", "git", "vim", "neovim", "editor", "config", "dotfiles", "starship", "fisher"],
     "Hardware & Keyboards": ["keyboard", "hardware", "ergonomic", "split-keyboard", "mechanical-keyboard", "qmk", "zmk", "firmware", "pcb", "kicad", "keycap"],
-    "Android & Termux": ["android", "termux", "apk", "root", "adb", "magisk", "xposed", "lineageos", "recovery", "bootloader", "shizuku"],
+    "Android & Termux": ["android", "termux", "apk", "magisk", "xposed", "lineageos", "shizuku"],
     "3D Printing & CAD": ["3d", "cad", "scad", "printing", "printer", "mesh", "splat", "gaussian", "stl", "marlin", "voron", "klipper", "cura", "prusaslicer", "blender", "modeling", "cnc", "openscad"],
-    "OS & Customization": ["linux", "kernel", "boot", "grub", "ventoy", "theme", "catppuccin", "dracula", "nord", "wallpaper", "desktop", "font", "nerd-font", "icon", "styling", "customization"],
+    "OS & Customization": ["linux", "kernel", "boot", "grub", "ventoy", "theme", "catppuccin", "dracula", "nord", "wallpaper", "desktop", "font", "nerd-font", "icon", "styling", "customization", "bootloader", "recovery"],
     "Dev Tools & Frameworks": ["framework", "javascript", "typescript", "python", "rust", "go", "nodejs", "react", "vue", "svelte", "docker", "kubernetes", "aws", "firebase", "api", "backend", "frontend", "web", "compiler", "runtime", "bun", "yarn", "npm"]
 }
 
@@ -89,14 +89,14 @@ def categorize(repo):
         return "AI Agents & LLMs"
     if any(kw in combined for kw in KEYWORDS["3D Printing & CAD"]):
         return "3D Printing & CAD"
+    if any(kw in combined for kw in KEYWORDS["OS & Customization"]):
+        return "OS & Customization"
     if any(kw in combined for kw in KEYWORDS["Android & Termux"]):
         return "Android & Termux"
     if any(kw in combined for kw in KEYWORDS["Hardware & Keyboards"]):
         return "Hardware & Keyboards"
     if any(kw in combined for kw in KEYWORDS["Tools & CLI"]):
         return "Tools & CLI"
-    if any(kw in combined for kw in KEYWORDS["OS & Customization"]):
-        return "OS & Customization"
     if any(kw in combined for kw in KEYWORDS["Dev Tools & Frameworks"]):
         return "Dev Tools & Frameworks"
     return None
