@@ -1,27 +1,16 @@
 import subprocess
 import json
 import sys
+import datetime
+import os
 
-# Your List IDs
-LISTS = {
-    "AI Agents & LLMs": "UL_kwDOAHb0k84AeBvM",
-    "Tools & CLI": "UL_kwDOAHb0k84AeBvN",
-    "Hardware & Keyboards": "UL_kwDOAHb0k84AeBvO",
-    "Android & Termux": "UL_kwDOAHb0k84AeBvP",
-    "3D Printing & CAD": "UL_kwDOAHb0k84AeBvT",
-    "OS & Customization": "UL_kwDOAHb0k84AeBxQ",
-    "Dev Tools & Frameworks": "UL_kwDOAHb0k84AeBxR"
-}
+def load_config():
+    with open("config.json", "r") as f:
+        return json.load(f)
 
-KEYWORDS = {
-    "AI Agents & LLMs": ["ai", "llm", "agent", "autonomous", "gpt", "claude", "inference", "machine-learning", "deep-learning", "anthropic", "openai", "mcp", "skills", "agentic", "transformers", "pytorch", "tensorflow", "rag", "embeddings", "ollama", "vllm", "diffusion", "chatbot"],
-    "Tools & CLI": ["cli", "terminal", "shell", "fish", "prompt", "tui", "utility", "tool", "plugin", "manager", "zsh", "bash", "tmux", "git", "vim", "neovim", "editor", "config", "dotfiles", "starship", "fisher"],
-    "Hardware & Keyboards": ["keyboard", "hardware", "ergonomic", "split-keyboard", "mechanical-keyboard", "qmk", "zmk", "firmware", "pcb", "kicad", "keycap"],
-    "Android & Termux": ["android", "termux", "apk", "magisk", "xposed", "lineageos", "shizuku"],
-    "3D Printing & CAD": ["3d", "cad", "scad", "printing", "printer", "mesh", "splat", "gaussian", "stl", "marlin", "voron", "klipper", "cura", "prusaslicer", "blender", "modeling", "cnc", "openscad"],
-    "OS & Customization": ["linux", "kernel", "boot", "grub", "ventoy", "theme", "catppuccin", "dracula", "nord", "wallpaper", "desktop", "font", "nerd-font", "icon", "styling", "customization", "bootloader", "recovery"],
-    "Dev Tools & Frameworks": ["framework", "javascript", "typescript", "python", "rust", "go", "nodejs", "react", "vue", "svelte", "docker", "kubernetes", "aws", "firebase", "api", "backend", "frontend", "web", "compiler", "runtime", "bun", "yarn", "npm"]
-}
+config = load_config()
+LISTS = config["lists"]
+KEYWORDS = config["keywords"]
 
 def run_query(query, variables=None):
     cmd = ["gh", "api", "graphql", "-f", f"query={query}"]
@@ -85,21 +74,61 @@ def categorize(repo):
     combined = f"{name} {desc} {' '.join(topics)}"
     
     # Priority matching
-    if any(kw in combined for kw in KEYWORDS["AI Agents & LLMs"]):
+    if any(kw in combined for kw in KEYWORDS.get("AI Agents & LLMs", [])):
         return "AI Agents & LLMs"
-    if any(kw in combined for kw in KEYWORDS["3D Printing & CAD"]):
+    if any(kw in combined for kw in KEYWORDS.get("3D Printing & CAD", [])):
         return "3D Printing & CAD"
-    if any(kw in combined for kw in KEYWORDS["OS & Customization"]):
+    if any(kw in combined for kw in KEYWORDS.get("OS & Customization", [])):
         return "OS & Customization"
-    if any(kw in combined for kw in KEYWORDS["Android & Termux"]):
+    if any(kw in combined for kw in KEYWORDS.get("Android & Termux", [])):
         return "Android & Termux"
-    if any(kw in combined for kw in KEYWORDS["Hardware & Keyboards"]):
+    if any(kw in combined for kw in KEYWORDS.get("Hardware & Keyboards", [])):
         return "Hardware & Keyboards"
-    if any(kw in combined for kw in KEYWORDS["Tools & CLI"]):
+    if any(kw in combined for kw in KEYWORDS.get("Tools & CLI", [])):
         return "Tools & CLI"
-    if any(kw in combined for kw in KEYWORDS["Dev Tools & Frameworks"]):
+    if any(kw in combined for kw in KEYWORDS.get("Dev Tools & Frameworks", [])):
         return "Dev Tools & Frameworks"
+        
+    # Check any dynamic categories added to config.json
+    for cat, kws in KEYWORDS.items():
+        if cat not in ["AI Agents & LLMs", "3D Printing & CAD", "OS & Customization", "Android & Termux", "Hardware & Keyboards", "Tools & CLI", "Dev Tools & Frameworks"]:
+            if any(kw in combined for kw in kws):
+                return cat
+                
     return None
+
+def get_or_create_issue():
+    # Group issues by year and week to create a rolling "Weekly" issue
+    date_str = datetime.date.today().strftime("%Y-W%V")
+    title = f"Uncategorized Stars: {date_str}"
+    
+    # Search for an open issue with this title
+    res = subprocess.run(["gh", "issue", "list", "--state", "open", "--search", f'in:title "{title}"', "--json", "number", "-q", ".[0].number"], capture_output=True, text=True)
+    if res.returncode == 0 and res.stdout.strip() and res.stdout.strip() != "null":
+        return res.stdout.strip()
+        
+    # Create the issue if it doesn't exist
+    body = "This issue tracks repositories that were skipped during the organization run because they did not match any existing keywords. Comments below contain batches of uncategorized repositories."
+    res = subprocess.run(["gh", "issue", "create", "--title", title, "--body", body], capture_output=True, text=True)
+    if res.returncode == 0:
+        url = res.stdout.strip()
+        return url.split("/")[-1]
+    else:
+        print(f"Failed to create issue: {res.stderr}")
+    return None
+
+def report_uncategorized(issue_number, skipped_repos):
+    if not skipped_repos or not issue_number:
+        return
+    comment_body = "### New Uncategorized Repositories\n\n"
+    for r in skipped_repos:
+        topics = ", ".join([t["topic"]["name"] for t in r.get("repositoryTopics", {}).get("nodes", [])])
+        desc = r.get('description') or "No description"
+        comment_body += f"- **{r['nameWithOwner']}**\n  - Description: {desc}\n  - Topics: {topics}\n\n"
+        
+    res = subprocess.run(["gh", "issue", "comment", str(issue_number), "--body", comment_body])
+    if res.returncode != 0:
+        print(f"Failed to post comment: {res.stderr}")
 
 def main():
     print("Fetching already categorized stars...")
@@ -113,6 +142,8 @@ def main():
         print("Failed to fetch stars.")
         return
 
+    skipped_repos = []
+
     for repo in stars["data"]["viewer"]["starredRepositories"]["nodes"]:
         if repo["id"] not in categorized:
             cat = categorize(repo)
@@ -122,11 +153,19 @@ def main():
                 mutation($repoId: ID!, $listId: ID!) {
                   updateUserListsForItem(input: {itemId: $repoId, listIds: [$listId]}) { clientMutationId }
                 }
-                """, {"repoId": repo["id"], "listId": LISTS[cat]})
+                """, {"repoId": repo["id"], "listId": LISTS.get(cat)})
             else:
                 print(f"Skipping {repo['nameWithOwner']} (no keyword match).")
+                skipped_repos.append(repo)
         else:
             print(f"Skipping {repo['nameWithOwner']} (already categorized).")
+            
+    if skipped_repos:
+        print(f"Reporting {len(skipped_repos)} uncategorized repos to a GitHub issue...")
+        issue_num = get_or_create_issue()
+        if issue_num:
+            report_uncategorized(issue_num, skipped_repos)
+            print(f"Comment added to issue #{issue_num}.")
 
 if __name__ == "__main__":
     main()
