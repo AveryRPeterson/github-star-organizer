@@ -1,0 +1,15 @@
+name: Organize Stars
+on:
+  schedule:
+    - cron: '0 * * * *' # Every hour
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  organize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Organize
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: python3 categorize.py
