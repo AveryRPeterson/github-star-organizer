@@ -102,8 +102,8 @@ def get_or_create_issue():
     date_str = datetime.date.today().strftime("%Y-W%V")
     title = f"Uncategorized Stars: {date_str}"
     
-    # Search for an open issue with this title
-    res = subprocess.run(["gh", "issue", "list", "--state", "open", "--search", f'in:title "{title}"', "--json", "number", "-q", ".[0].number"], capture_output=True, text=True)
+    # Search for an open issue with this title, ensuring it's authored by the owner (@me)
+    res = subprocess.run(["gh", "issue", "list", "--state", "open", "--search", f'in:title "{title}" author:@me', "--json", "number", "-q", ".[0].number"], capture_output=True, text=True)
     if res.returncode == 0 and res.stdout.strip() and res.stdout.strip() != "null":
         return res.stdout.strip()
         
