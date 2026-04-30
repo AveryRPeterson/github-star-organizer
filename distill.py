@@ -12,14 +12,21 @@ def run_command(cmd):
     return result.stdout.strip()
 
 def get_latest_uncategorized_issue():
-    # Find the most recent open issue for uncategorized stars
-    res = run_command(["gh", "issue", "list", "--state", "open", "--search", "Uncategorized Stars in:title", "--json", "number,body", "--limit", "1"])
+    # Find the most recent open issue for uncategorized stars from the owner
+    # author:@me is a gh CLI alias for the current authenticated user
+    res = run_command(["gh", "issue", "list", "--state", "open", "--search", "Uncategorized Stars in:title author:@me", "--json", "number,body,title", "--limit", "1"])
     if not res or res == "[]":
         return None
     return json.loads(res)[0]
 
 def get_issue_comments(issue_number):
-    res = run_command(["gh", "issue", "view", str(issue_number), "--json", "comments", "-q", ".comments[].body"])
+    # Only pull comments from the owner to prevent hijacking
+    user = run_command(["gh", "api", "user", "--json", "login", "-q", ".login"])
+    if not user:
+        print("Error: Could not determine current user.", file=sys.stderr)
+        return ""
+
+    res = run_command(["gh", "issue", "view", str(issue_number), "--json", "comments", "-q", f'.comments[] | select(.author.login == "{user}") | .body'])
     return res if res else ""
 
 def call_deepseek(prompt):
