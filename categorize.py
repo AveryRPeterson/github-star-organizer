@@ -12,6 +12,16 @@ config = load_config()
 LISTS = config["lists"]
 KEYWORDS = config["keywords"]
 
+PRIORITY_CATEGORIES = [
+    "AI Agents & LLMs",
+    "3D Printing & CAD",
+    "OS & Customization",
+    "Android & Termux",
+    "Hardware & Keyboards",
+    "Tools & CLI",
+    "Dev Tools & Frameworks"
+]
+
 def run_query(query, variables=None):
     cmd = ["gh", "api", "graphql", "-f", f"query={query}"]
     if variables:
@@ -74,24 +84,13 @@ def categorize(repo):
     combined = f"{name} {desc} {' '.join(topics)}"
     
     # Priority matching
-    if any(kw in combined for kw in KEYWORDS.get("AI Agents & LLMs", [])):
-        return "AI Agents & LLMs"
-    if any(kw in combined for kw in KEYWORDS.get("3D Printing & CAD", [])):
-        return "3D Printing & CAD"
-    if any(kw in combined for kw in KEYWORDS.get("OS & Customization", [])):
-        return "OS & Customization"
-    if any(kw in combined for kw in KEYWORDS.get("Android & Termux", [])):
-        return "Android & Termux"
-    if any(kw in combined for kw in KEYWORDS.get("Hardware & Keyboards", [])):
-        return "Hardware & Keyboards"
-    if any(kw in combined for kw in KEYWORDS.get("Tools & CLI", [])):
-        return "Tools & CLI"
-    if any(kw in combined for kw in KEYWORDS.get("Dev Tools & Frameworks", [])):
-        return "Dev Tools & Frameworks"
+    for cat in PRIORITY_CATEGORIES:
+        if any(kw in combined for kw in KEYWORDS.get(cat, [])):
+            return cat
         
     # Check any dynamic categories added to config.json
     for cat, kws in KEYWORDS.items():
-        if cat not in ["AI Agents & LLMs", "3D Printing & CAD", "OS & Customization", "Android & Termux", "Hardware & Keyboards", "Tools & CLI", "Dev Tools & Frameworks"]:
+        if cat not in PRIORITY_CATEGORIES:
             if any(kw in combined for kw in kws):
                 return cat
                 
