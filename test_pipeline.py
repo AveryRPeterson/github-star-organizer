@@ -2,6 +2,7 @@ import subprocess
 import time
 import sys
 import json
+from concurrent.futures import ThreadPoolExecutor
 
 TEST_REPOS = [
     "pieeg-club/ironbci",
@@ -20,7 +21,7 @@ def run_command(cmd, capture=True):
 
 def star_repo(repo):
     print(f"Starring {repo}...")
-    run_command(["gh", "api", "-X", "PUT", f"/user/starred/{repo}"])
+    return run_command(["gh", "api", "-X", "PUT", f"/user/starred/{repo}"])
 
 def trigger_workflow(workflow_name):
     print(f"Triggering {workflow_name} workflow...")
@@ -42,8 +43,8 @@ def wait_for_run(run_id):
 
 def main():
     print("--- 1. Starring Test Repositories ---")
-    for repo in TEST_REPOS:
-        star_repo(repo)
+    with ThreadPoolExecutor() as executor:
+        executor.map(star_repo, TEST_REPOS)
     
     print("\n--- 2. Triggering Organization Runner ---")
     trigger_workflow("organize.yml")
