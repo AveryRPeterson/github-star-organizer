@@ -3,6 +3,7 @@ import json
 import sys
 import datetime
 import os
+import re
 
 def load_config():
     with open("config.json", "r") as f:
@@ -116,6 +117,28 @@ def get_or_create_issue():
         print(f"Failed to create issue: {res.stderr}")
     return None
 
+def get_already_reported_repos(issue_number):
+    if not issue_number:
+        return set()
+    
+    # Fetch all comments' bodies from the issue
+    res = subprocess.run(
+        ["gh", "issue", "view", str(issue_number), "--json", "comments", "-q", ".comments[].body"],
+        capture_output=True, text=True
+    )
+    if res.returncode != 0:
+        print(f"Failed to fetch comments for issue #{issue_number}: {res.stderr}")
+        return set()
+    
+    # Extract nameWithOwner using regex from the markdown list items
+    reported = set()
+    # Looking for lines like "- **user/repo**"
+    matches = re.findall(r"- \*\*([^*]+)\*\*", res.stdout)
+    for match in matches:
+        reported.add(match)
+        
+    return reported
+
 def report_uncategorized(issue_number, skipped_repos):
     if not skipped_repos or not issue_number:
         return
@@ -160,11 +183,19 @@ def main():
             print(f"Skipping {repo['nameWithOwner']} (already categorized).")
             
     if skipped_repos:
-        print(f"Reporting {len(skipped_repos)} uncategorized repos to a GitHub issue...")
+        print(f"Preparing to report {len(skipped_repos)} uncategorized repos...")
         issue_num = get_or_create_issue()
         if issue_num:
-            report_uncategorized(issue_num, skipped_repos)
-            print(f"Comment added to issue #{issue_num}.")
+            already_reported = get_already_reported_repos(issue_num)
+            
+            new_to_report = [repo for repo in skipped_repos if repo['nameWithOwner'] not in already_reported]
+            
+            if new_to_report:
+                print(f"Reporting {len(new_to_report)} new uncategorized repos to issue #{issue_num}...")
+                report_uncategorized(issue_num, new_to_report)
+                print(f"Comment added to issue #{issue_num}.")
+            else:
+                print("All skipped repos have already been reported.")
 
 if __name__ == "__main__":
     main()
