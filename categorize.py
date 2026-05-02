@@ -100,22 +100,46 @@ def categorize(repo):
 def get_or_create_issue():
     # Group issues by year and week to create a rolling "Weekly" issue
     date_str = datetime.date.today().strftime("%Y-W%V")
-    title = f"Uncategorized Stars: {date_str}"
+    target_title = f"Uncategorized Stars: {date_str}"
     
-    # Search for an open issue with this title, ensuring it's authored by the owner (@me)
-    res = subprocess.run(["gh", "issue", "list", "--state", "open", "--search", f'in:title "{title}" author:@me', "--json", "number", "-q", ".[0].number"], capture_output=True, text=True)
-    if res.returncode == 0 and res.stdout.strip() and res.stdout.strip() != "null":
-        return res.stdout.strip()
-        
-    # Create the issue if it doesn't exist
-    body = "This issue tracks repositories that were skipped during the organization run because they did not match any existing keywords. Comments below contain batches of uncategorized repositories."
-    res = subprocess.run(["gh", "issue", "create", "--title", title, "--body", body], capture_output=True, text=True)
-    if res.returncode == 0:
-        url = res.stdout.strip()
-        return url.split("/")[-1]
-    else:
-        print(f"Failed to create issue: {res.stderr}")
-    return None
+    # 1. Find all open uncategorized issues authored by me
+    res = subprocess.run(["gh", "issue", "list", "--state", "open", "--search", 'in:title "Uncategorized Stars" author:@me', "--json", "number,title"], capture_output=True, text=True)
+    
+    open_issues = []
+    if res.returncode == 0 and res.stdout.strip():
+        try:
+            open_issues = json.loads(res.stdout.strip())
+        except json.JSONDecodeError:
+            pass
+
+    target_issue_num = None
+    old_issues = []
+
+    for issue in open_issues:
+        if issue["title"] == target_title:
+            target_issue_num = str(issue["number"])
+        else:
+            old_issues.append(str(issue["number"]))
+
+    # 2. If target issue doesn't exist, create it
+    if not target_issue_num:
+        body = "This issue tracks repositories that were skipped during the organization run because they did not match any existing keywords. Comments below contain batches of uncategorized repositories."
+        res_create = subprocess.run(["gh", "issue", "create", "--title", target_title, "--body", body], capture_output=True, text=True)
+        if res_create.returncode == 0:
+            url = res_create.stdout.strip()
+            target_issue_num = url.split("/")[-1]
+        else:
+            print(f"Failed to create issue: {res_create.stderr}")
+            return None
+
+    # 3. Close old issues, pointing them to the new target issue
+    for old_issue_num in old_issues:
+        comment = f"A new weekly issue has been created: #{target_issue_num}. Closing this older tracking issue."
+        subprocess.run(["gh", "issue", "comment", old_issue_num, "--body", comment])
+        subprocess.run(["gh", "issue", "close", old_issue_num, "--reason", "not planned"])
+        print(f"Closed old tracking issue #{old_issue_num}")
+
+    return target_issue_num
 
 def get_already_reported_repos(issue_number):
     if not issue_number:
