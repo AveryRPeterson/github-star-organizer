@@ -41,3 +41,23 @@ def run_query(query: str, variables: dict[str, str] | None = None) -> dict:
         return json.loads(result.stdout)
     except json.JSONDecodeError as e:
         raise GitHubAPIError(f"Invalid JSON response from GitHub: {e}")
+
+
+class GitHubClient:
+    """Wrapper for GitHub API operations via gh CLI."""
+
+    def run_query(self, query: str, variables: dict[str, str] | None = None) -> dict:
+        """
+        Execute a GraphQL query against GitHub API.
+
+        Args:
+            query: GraphQL query string
+            variables: Optional dict of query variables
+
+        Returns:
+            Parsed JSON response dict
+
+        Raises:
+            GitHubAPIError: If gh command fails
+        """
+        return run_query(query, variables)
