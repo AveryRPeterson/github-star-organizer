@@ -117,7 +117,12 @@ def get_or_create_issue():
 
     for issue in open_issues:
         if issue["title"] == target_title:
-            target_issue_num = str(issue["number"])
+            if not target_issue_num:
+                target_issue_num = str(issue["number"])
+            else:
+                # If we already have a target but found another one with the same title,
+                # treat the subsequent ones as duplicates to be closed.
+                old_issues.append(str(issue["number"]))
         else:
             old_issues.append(str(issue["number"]))
 
