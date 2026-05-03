@@ -3,6 +3,7 @@ from unittest.mock import MagicMock, patch, call
 import datetime
 from github_star_organizer.issue_manager import (
     get_or_create_weekly_issue,
+    get_or_create_weekly_discovery_issue,
     get_already_reported_repos,
     report_uncategorized_repos,
     close_issue,
@@ -54,6 +55,35 @@ class TestGetOrCreateWeeklyIssue(unittest.TestCase):
         result = get_or_create_weekly_issue(mock_client)
 
         self.assertEqual(result, "42")
+
+
+class TestGetOrCreateWeeklyDiscoveryIssue(unittest.TestCase):
+    @patch("github_star_organizer.issue_manager.run_command")
+    @patch("github_star_organizer.issue_manager.datetime")
+    def test_create_new_discovery_issue_when_none_exists(self, mock_datetime, mock_run_command):
+        """Test creating a new discovery issue when none exists"""
+        mock_datetime.date.today.return_value = datetime.date(2026, 5, 2)
+
+        mock_client = MagicMock()
+        mock_run_command.side_effect = [
+            "[]",  # No existing issues
+            "https://github.com/user/repo/issues/99"  # Issue created
+        ]
+
+        result = get_or_create_weekly_discovery_issue(mock_client)
+        self.assertEqual(result, "99")
+
+    @patch("github_star_organizer.issue_manager.run_command")
+    @patch("github_star_organizer.issue_manager.datetime")
+    def test_return_existing_discovery_issue(self, mock_datetime, mock_run_command):
+        """Test returning existing discovery issue for this week"""
+        mock_datetime.date.today.return_value = datetime.date(2026, 5, 2)
+
+        mock_client = MagicMock()
+        mock_run_command.return_value = '[{"number": 99, "title": "Interesting Discoveries: 2026-W18"}]'
+
+        result = get_or_create_weekly_discovery_issue(mock_client)
+        self.assertEqual(result, "99")
 
 
 class TestGetAlreadyReportedRepos(unittest.TestCase):

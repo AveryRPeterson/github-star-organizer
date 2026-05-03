@@ -1,0 +1,37 @@
+name: Find Weird Repos
+
+on:
+  schedule:
+    - cron: '0 23 * * 6'  # Saturday 11pm UTC (1 hour before distill.yml)
+  workflow_dispatch:
+
+jobs:
+  find-weird:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Find and Report Weird Repos
+        id: find_weird
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+        run: python find_weird.py
+
+      - name: Report Summary
+        if: always()
+        run: |
+          echo "Repos found: ${{ steps.find_weird.outputs.repos_found }}"
+          echo "Repos reported: ${{ steps.find_weird.outputs.repos_reported }}"
+          echo "Week: ${{ steps.find_weird.outputs.date_suffix }}"

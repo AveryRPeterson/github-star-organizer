@@ -158,3 +158,61 @@ def close_issue(client, issue_number: str, reason: str) -> None:
         run_command(["gh", "issue", "close", issue_number])
     except IssueError as e:
         raise IssueError(f"Failed to close issue #{issue_number}: {e}")
+
+
+def get_or_create_weekly_discovery_issue(client) -> str | None:
+    """
+    Get or create the weekly interesting discoveries tracking issue.
+
+    Same lifecycle logic as get_or_create_weekly_issue but with title
+    "Interesting Discoveries: YYYY-W##".
+
+    Args:
+        client: GitHubClient instance
+
+    Returns:
+        Issue number as string, or None if creation fails
+
+    Raises:
+        IssueError: If issue operations fail
+    """
+    date_str = datetime.date.today().strftime("%Y-W%V")
+    target_title = f"Interesting Discoveries: {date_str}"
+
+    try:
+        res = run_command(["gh", "issue", "list", "--state", "open",
+                          "--search", 'in:title "Interesting Discoveries" author:@me',
+                          "--json", "number,title"])
+        open_issues = json.loads(res) if res else []
+    except (json.JSONDecodeError, IssueError):
+        open_issues = []
+
+    target_issue_num = None
+    old_issues = []
+
+    for issue in open_issues:
+        if issue["title"] == target_title:
+            if not target_issue_num:
+                target_issue_num = str(issue["number"])
+            else:
+                old_issues.append(str(issue["number"]))
+        else:
+            old_issues.append(str(issue["number"]))
+
+    if not target_issue_num:
+        try:
+            body = "This issue tracks AI-generated summaries of popular uncategorized repositories discovered this week. Review the repos below, star any that interest you, then close this issue."
+            url = run_command(["gh", "issue", "create", "--title", target_title, "--body", body])
+            target_issue_num = url.split("/")[-1]
+        except IssueError as e:
+            raise IssueError(f"Failed to create discovery issue: {e}")
+
+    for old_issue_num in old_issues:
+        try:
+            comment = f"A new weekly issue has been created: #{target_issue_num}. Closing this older tracking issue."
+            run_command(["gh", "issue", "comment", old_issue_num, "--body", comment])
+            run_command(["gh", "issue", "close", old_issue_num, "--reason", "not planned"])
+        except IssueError:
+            pass
+
+    return target_issue_num
