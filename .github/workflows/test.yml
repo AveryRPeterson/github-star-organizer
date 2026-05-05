@@ -1,0 +1,30 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - uses: actions/setup-python@v5
+      with:
+        python-version: "3.x"
+
+    - name: Install dependencies
+      run: pip install -r requirements.txt pytest pytest-cov
+
+    - name: Run unit tests
+      run: pytest tests/unit/ -v
+
+    - name: Run integration tests
+      run: pytest tests/integration/ -v
+
+    - name: Generate coverage report
+      run: pytest tests/ --cov=github_star_organizer --cov-report=term-missing
