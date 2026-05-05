@@ -321,7 +321,7 @@ class TestPackageImports(unittest.TestCase):
 
     def test_entry_scripts_exist(self):
         """Test that entry-point scripts exist"""
-        scripts = ["categorize.py", "distill.py", "find_weird.py"]
+        scripts = ["categorize.py", "distill.py", "discover_repos.py"]
         base_dir = Path(__file__).parent.parent.parent
 
         for script in scripts:
