@@ -193,7 +193,7 @@ def _identify_via_ollama(prompt: str) -> list[str] | None:
                 "Content-Type": "application/json",
             },
             json={
-                "model": "qwen3.5",
+                "model": "gpt-oss:120b",
                 "messages": [
                     {
                         "role": "system",
@@ -366,7 +366,7 @@ Repositories to analyze:
                 "Content-Type": "application/json",
             },
             json={
-                "model": "qwen3.5",
+                "model": "gpt-oss:120b",
                 "messages": [
                     {
                         "role": "system",
