@@ -18,6 +18,20 @@ from github_star_organizer.issue_manager import (
 logger = get_logger("find_weird")
 
 
+# Model specifications for transparency
+MODEL_SPECS = {
+    "deepseek-chat": {
+        "version": "latest",
+        "provider": "DeepSeek",
+        "context_window": "32K tokens",
+        "input_cost_per_1m_tokens": "$0.14",
+        "output_cost_per_1m_tokens": "$0.28",
+        "max_tokens": "4096",
+        "docs": "https://platform.deepseek.com/api-docs/",
+    }
+}
+
+
 def search_popular_repos(client):
     """Search for popular repositories created after 2023"""
     query = """
@@ -148,7 +162,19 @@ def format_discovery_comment(repos: list[dict], summaries: dict[str, dict], mode
     Returns:
         Markdown string for GitHub issue comment
     """
-    comment = f"### New Discovery Batch\n\n_AI summaries generated using [{model}](https://deepseek.com)_\n\n"
+    specs = MODEL_SPECS.get(model, {})
+
+    comment = f"### New Discovery Batch\n\n"
+    comment += f"**AI Analysis:** Generated using [{model}]({specs.get('docs', 'https://deepseek.com')})\n\n"
+
+    if specs:
+        comment += "**Model Specs:**\n"
+        comment += f"- **Provider:** {specs.get('provider', 'N/A')}\n"
+        comment += f"- **Context Window:** {specs.get('context_window', 'N/A')}\n"
+        comment += f"- **Max Output Tokens:** {specs.get('max_tokens', 'N/A')}\n"
+        comment += f"- **Input Cost:** {specs.get('input_cost_per_1m_tokens', 'N/A')} per 1M tokens\n"
+        comment += f"- **Output Cost:** {specs.get('output_cost_per_1m_tokens', 'N/A')} per 1M tokens\n"
+        comment += "\n"
 
     for repo in repos:
         name = repo["nameWithOwner"]
