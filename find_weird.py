@@ -207,7 +207,7 @@ def _identify_via_ollama(prompt: str) -> list[str] | None:
         )
 
         if response.status_code != 200:
-            logger.warning(f"Ollama API error: {response.status_code}")
+            logger.warning(f"Ollama API error: {response.status_code} - {response.text}")
             return None
 
         result = response.json()
@@ -380,7 +380,7 @@ Repositories to analyze:
         )
 
         if response.status_code != 200:
-            logger.warning(f"Ollama API error: {response.status_code}")
+            logger.warning(f"Ollama API error: {response.status_code} - {response.text}")
             return None
 
         result = response.json()
