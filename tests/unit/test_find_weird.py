@@ -153,18 +153,20 @@ class TestFormatDiscoveryComment:
                 "repositoryTopics": {"nodes": [{"topic": {"name": "python"}}, {"topic": {"name": "testing"}}]},
             }
         ]
-        summaries = {
-            "owner/repo": {
-                "purpose": "A testing framework",
-                "use_case": "Unit testing",
-                "unusual_applications": ["Load testing", "Chaos testing", "Contract testing"],
+        model_summaries = {
+            "deepseek": {
+                "owner/repo": {
+                    "purpose": "A testing framework",
+                    "use_case": "Unit testing",
+                    "unusual_applications": ["Load testing", "Chaos testing", "Contract testing"],
+                }
             }
         }
 
-        result = find_weird.format_discovery_comment(repos, summaries)
+        result = find_weird.format_discovery_comment(repos, model_summaries)
 
         assert "### New Discovery Batch" in result
-        assert "- **owner/repo**" in result
+        assert "- **[owner/repo]" in result  # Link format
         assert "**Description:**" in result
         assert "**Purpose:** A testing framework" in result
         assert "**Suggested Use Case:** Unit testing" in result
@@ -181,13 +183,12 @@ class TestFormatDiscoveryComment:
                 "repositoryTopics": {"nodes": [{"topic": {"name": "python"}}]},
             }
         ]
-        summaries = {}
+        model_summaries = {}
 
-        result = find_weird.format_discovery_comment(repos, summaries)
+        result = find_weird.format_discovery_comment(repos, model_summaries)
 
-        assert "- **owner/repo**" in result
-        assert "**Description:** Test repo" in result
-        assert "**Purpose:**" not in result
+        # With no summaries, should only show the New Discovery Batch header
+        assert "### New Discovery Batch" in result
 
     def test_every_entry_starts_with_markdown_format(self):
         repos = [
@@ -202,17 +203,30 @@ class TestFormatDiscoveryComment:
                 "repositoryTopics": {"nodes": []},
             },
         ]
-        summaries = {}
+        model_summaries = {
+            "deepseek": {
+                "org1/repo1": {
+                    "purpose": "Repo 1 purpose",
+                    "use_case": "Use case 1",
+                    "unusual_applications": ["App1", "App2", "App3"],
+                },
+                "org2/repo2": {
+                    "purpose": "Repo 2 purpose",
+                    "use_case": "Use case 2",
+                    "unusual_applications": ["App1", "App2", "App3"],
+                },
+            }
+        }
 
-        result = find_weird.format_discovery_comment(repos, summaries)
+        result = find_weird.format_discovery_comment(repos, model_summaries)
 
-        assert "- **org1/repo1**" in result
-        assert "- **org2/repo2**" in result
+        assert "- **[org1/repo1]" in result  # Link format
+        assert "- **[org2/repo2]" in result  # Link format
 
 
 class TestFindWeirdMain:
     @patch("find_weird.report_uncategorized_repos")
-    @patch("find_weird.call_deepseek_summaries")
+    @patch("find_weird.run_parallel_summaries")
     @patch("find_weird.get_already_reported_repos")
     @patch("find_weird.get_or_create_weekly_discovery_issue")
     @patch("find_weird.get_or_create_weekly_issue")
@@ -225,7 +239,7 @@ class TestFindWeirdMain:
         mock_get_issue,
         mock_get_discovery,
         mock_get_reported,
-        mock_deepseek,
+        mock_parallel,
         mock_report,
     ):
         mock_client = MagicMock()
@@ -249,12 +263,12 @@ class TestFindWeirdMain:
         mock_get_issue.return_value = "123"
         mock_get_discovery.return_value = "124"
         mock_get_reported.return_value = set()
-        mock_deepseek.return_value = None  # DeepSeek failure
+        mock_parallel.return_value = {}  # Both models fail, return empty dict
 
         with patch("find_weird.is_categorized", return_value=False):
             find_weird.main()
 
-        # Should still call report_uncategorized_repos even if DeepSeek failed
+        # Should still call report_uncategorized_repos even if both models failed
         mock_report.assert_called_once()
 
     @patch("find_weird.GitHubClient")
@@ -285,7 +299,7 @@ class TestFindWeirdMain:
 
     @patch("builtins.open", new_callable=mock_open)
     @patch("find_weird.report_uncategorized_repos")
-    @patch("find_weird.call_deepseek_summaries")
+    @patch("find_weird.run_parallel_summaries")
     @patch("find_weird.get_already_reported_repos")
     @patch("find_weird.get_or_create_weekly_discovery_issue")
     @patch("find_weird.get_or_create_weekly_issue")
@@ -298,7 +312,7 @@ class TestFindWeirdMain:
         mock_get_issue,
         mock_get_discovery,
         mock_get_reported,
-        mock_deepseek,
+        mock_parallel,
         mock_report,
         mock_file,
     ):
@@ -323,7 +337,7 @@ class TestFindWeirdMain:
         mock_get_issue.return_value = "123"
         mock_get_discovery.return_value = "124"
         mock_get_reported.return_value = set()
-        mock_deepseek.return_value = {}
+        mock_parallel.return_value = {}
 
         with patch.dict(os.environ, {"GITHUB_OUTPUT": "/tmp/output"}):
             with patch("find_weird.is_categorized", return_value=False):
