@@ -60,7 +60,9 @@
       "dotfiles",
       "starship",
       "fisher",
-      "esoteric-language"
+      "esoteric-language",
+      "opentofu",
+      "terraform"
     ],
     "Hardware & Keyboards": [
       "keyboard",
@@ -148,7 +150,8 @@
       "bun",
       "yarn",
       "npm",
-      "hacktoberfest"
+      "hacktoberfest",
+      "infrastructure"
     ],
     "Education & Textbooks": [
       "textbook",
