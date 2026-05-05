@@ -600,11 +600,14 @@ def main():
             logger.error("Failed to fetch repositories")
             return
 
-        uncategorized = [r for r in data["data"]["search"]["nodes"] if not is_categorized(r)]
+        # Get all repos from search (both categorized and uncategorized)
+        all_repos = data["data"]["search"]["nodes"]
+        logger.info(f"Found {len(all_repos)} total repos in search")
 
+        # Stage 1: Identify uncategorized repos for keyword growth
+        uncategorized = [r for r in all_repos if not is_categorized(r)]
         if not uncategorized:
             logger.info("No uncategorized popular repositories found")
-            # Write GITHUB_OUTPUT
             if "GITHUB_OUTPUT" in os.environ:
                 with open(os.environ["GITHUB_OUTPUT"], "a") as f:
                     date_suffix = datetime.date.today().strftime("%Y-W%V")
@@ -613,7 +616,7 @@ def main():
                     f.write(f"date_suffix={date_suffix}\n")
             return
 
-        logger.info(f"Found {len(uncategorized)} uncategorized repos")
+        logger.info(f"Found {len(uncategorized)} uncategorized repos (Stage 1: keyword growth)")
 
         # Create or get weekly issues
         uncategorized_issue_num = get_or_create_weekly_issue(client)
@@ -627,33 +630,35 @@ def main():
         already_uncategorized = get_already_reported_repos(client, uncategorized_issue_num)
         already_discovered = get_already_reported_repos(client, discovery_issue_num)
 
-        # Filter to new repos only
-        new_repos = [
+        # Filter uncategorized to new ones only (Stage 1)
+        new_uncategorized = [
             r
             for r in uncategorized
-            if r["nameWithOwner"] not in already_discovered
-            and r["nameWithOwner"] not in already_uncategorized
+            if r["nameWithOwner"] not in already_uncategorized
         ]
 
-        if not new_repos:
-            logger.info("All uncategorized repos have already been reported")
-            # Write GITHUB_OUTPUT
-            if "GITHUB_OUTPUT" in os.environ:
-                with open(os.environ["GITHUB_OUTPUT"], "a") as f:
-                    date_suffix = datetime.date.today().strftime("%Y-W%V")
-                    f.write(f"repos_found={len(uncategorized)}\n")
-                    f.write(f"repos_reported=0\n")
-                    f.write(f"date_suffix={date_suffix}\n")
-            return
+        # Stage 2: Use all repos (including categorized) for interesting selection
+        # This gives models 100 repos to choose from instead of just 3
+        new_all_repos = [
+            r
+            for r in all_repos
+            if r["nameWithOwner"] not in already_discovered
+        ]
 
-        logger.info(f"Preparing to analyze {len(new_repos)} new repos")
+        logger.info(f"Stage 1: {len(new_uncategorized)} new uncategorized repos for keywords")
+        logger.info(f"Stage 2: {len(new_all_repos)} new repos available for interesting selection")
 
-        # Two-stage discovery: identify interesting repos, then summarize them
-        result = identify_and_summarize_interesting(new_repos)
+        # Report uncategorized repos (Stage 1) for keyword growth
+        if new_uncategorized:
+            report_uncategorized_repos(client, uncategorized_issue_num, new_uncategorized)
+            logger.info(f"Reported {len(new_uncategorized)} repos to uncategorized issue #{uncategorized_issue_num}")
+
+        # Two-stage discovery: identify interesting repos, then summarize them (Stage 2 + 3)
+        result = identify_and_summarize_interesting(new_all_repos)
 
         if result:
             selected_repos, model_summaries = result
-            logger.info(f"Selected {len(selected_repos)} interesting repos for discovery")
+            logger.info(f"Stage 2+3: Selected {len(selected_repos)} interesting repos for detailed analysis")
 
             # Post to discovery issue
             if model_summaries:
@@ -669,16 +674,15 @@ def main():
         else:
             logger.warning("Repo identification failed; discovery issue not updated")
 
-        # Post to uncategorized issue
-        report_uncategorized_repos(client, uncategorized_issue_num, new_repos)
-        logger.info(f"Reported {len(new_repos)} repos to uncategorized issue #{uncategorized_issue_num}")
-
         # Write GITHUB_OUTPUT
         if "GITHUB_OUTPUT" in os.environ:
             with open(os.environ["GITHUB_OUTPUT"], "a") as f:
                 date_suffix = datetime.date.today().strftime("%Y-W%V")
+                # repos_found = uncategorized repos found, repos_reported = discovered repos (stage 2+3)
+                discovered_count = len(selected_repos) if result else 0
                 f.write(f"repos_found={len(uncategorized)}\n")
-                f.write(f"repos_reported={len(new_repos)}\n")
+                f.write(f"repos_reported={len(new_uncategorized)}\n")
+                f.write(f"repos_discovered={discovered_count}\n")
                 f.write(f"date_suffix={date_suffix}\n")
 
     except GitHubAPIError as e:
