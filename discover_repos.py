@@ -138,7 +138,7 @@ def is_categorized(repo):
     return categorize(repo) is not None
 
 
-def identify_interesting_repos(repos: list[dict], model: str = "deepseek") -> list[str] | None:
+def identify_interesting_repos(repos: list[dict], model: str = "deepseek", current_stars: set[str] | None = None) -> list[str] | None:
     """
     Ask an LLM to identify 3 unique/strange repos from a list.
     Returns list of nameWithOwner strings for the interesting repos.
@@ -146,6 +146,7 @@ def identify_interesting_repos(repos: list[dict], model: str = "deepseek") -> li
     Args:
         repos: List of repository dicts with nameWithOwner, description, repositoryTopics
         model: "deepseek" or "ollama"
+        current_stars: Set of repos already starred by user (to exclude from suggestions)
 
     Returns:
         List of nameWithOwner strings for 3 interesting repos, or None on error
@@ -160,10 +161,20 @@ def identify_interesting_repos(repos: list[dict], model: str = "deepseek") -> li
         desc = repo.get("description") or "No description"
         repo_list_str += f"{i}. {repo['nameWithOwner']} | {desc} | topics: {topics}\n"
 
+    # Add info about already starred repos to the prompt
+    starred_note = ""
+    if current_stars:
+        starred_list = sorted(current_stars)
+        starred_note = f"""
+IMPORTANT: The user has already starred these repos - do NOT suggest them:
+{', '.join(starred_list)}
+
+"""
+    
     user_prompt = f"""Analyze these GitHub repositories and identify exactly 3 that are most unique, unusual, or strange.
 Look for repos that do unconventional things, have surprising use cases, or solve problems in creative ways.
 
-Return ONLY valid JSON with this structure (no explanation):
+{starred_note}Return ONLY valid JSON with this structure (no explanation):
 {{
   "interesting_repos": [
     "owner/repo1",
@@ -457,7 +468,7 @@ Repositories to analyze:
         return None
 
 
-def identify_and_summarize_interesting(repos: list[dict]) -> tuple[list[dict], dict[str, dict[str, dict]]] | None:
+def identify_and_summarize_interesting(repos: list[dict], current_stars: set[str] | None = None) -> tuple[list[dict], dict[str, dict[str, dict]]] | None:
     """
     Two-stage discovery: identify interesting repos, then generate summaries.
 
@@ -468,6 +479,7 @@ def identify_and_summarize_interesting(repos: list[dict]) -> tuple[list[dict], d
 
     Args:
         repos: List of uncategorized repository dicts
+        current_stars: Set of repos already starred by user (to include in prompt)
 
     Returns:
         Tuple of (selected_repos_list, model_summaries_dict) or None on error
@@ -486,9 +498,9 @@ def identify_and_summarize_interesting(repos: list[dict]) -> tuple[list[dict], d
     logger.info(f"DeepSeek analyzing {len(even_repos)} repos (even indices)")
     logger.info(f"Ollama analyzing {len(odd_repos)} repos (odd indices)")
 
-    # Identify interesting repos from each subset
-    deepseek_interesting = identify_interesting_repos(even_repos, model="deepseek")
-    ollama_interesting = identify_interesting_repos(odd_repos, model="ollama")
+    # Identify interesting repos from each subset (pass starred repos to avoid)
+    deepseek_interesting = identify_interesting_repos(even_repos, model="deepseek", current_stars=current_stars)
+    ollama_interesting = identify_interesting_repos(odd_repos, model="ollama", current_stars=current_stars)
 
     # Consolidate results
     interesting_names = set()
@@ -708,7 +720,8 @@ def main():
             logger.info(f"Reported {len(new_uncategorized)} repos to uncategorized issue #{uncategorized_issue_num}")
 
         # Two-stage discovery: identify interesting repos, then summarize them (Stage 2 + 3)
-        result = identify_and_summarize_interesting(new_all_repos)
+        # Pass current_stars so models know what to avoid
+        result = identify_and_summarize_interesting(new_all_repos, current_stars=current_stars)
 
         if result:
             selected_repos, model_summaries = result
