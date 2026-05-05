@@ -180,7 +180,7 @@ def _identify_via_deepseek(prompt: str) -> list[str] | None:
 
 def _identify_via_ollama(prompt: str) -> list[str] | None:
     """Call Ollama to identify interesting repos"""
-    api_key = os.getenv("OLLAMA_API_KEY")
+    api_key = os.getenv("OLLAMA_CLOUD_KEY")
     if not api_key:
         logger.warning("OLLAMA_API_KEY not set")
         return None
@@ -326,7 +326,7 @@ def call_ollama_summaries(repos: list[dict]) -> dict[str, dict] | None:
     Returns:
         Dict keyed by nameWithOwner with {purpose, use_case, unusual_applications}, or None on error
     """
-    api_key = os.getenv("OLLAMA_API_KEY")
+    api_key = os.getenv("OLLAMA_CLOUD_KEY")
     if not api_key:
         logger.warning("OLLAMA_API_KEY not set, skipping Ollama analysis")
         return None

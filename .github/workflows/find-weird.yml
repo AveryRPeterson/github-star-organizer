@@ -27,7 +27,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-          OLLAMA_API_KEY: ${{ secrets.OLLAMA_API_KEY }}
+          OLLAMA_CLOUD_KEY: ${{ secrets.OLLAMA_CLOUD_KEY }}
         run: python find_weird.py
 
       - name: Report Summary
