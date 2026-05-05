@@ -19,6 +19,54 @@ from github_star_organizer.issue_manager import (
 logger = get_logger("find_weird")
 
 
+def get_current_stars() -> set[str]:
+    """
+    Fetch user's current starred repositories.
+    
+    Returns:
+        Set of "owner/repo" strings the user has starred
+    """
+    api_key = os.getenv("GITHUB_TOKEN")
+    if not api_key:
+        logger.warning("GITHUB_TOKEN not set, cannot fetch current stars")
+        return set()
+    
+    try:
+        starred = set()
+        page = 1
+        while True:
+            response = requests.get(
+                f"https://api.github.com/users/AveryRPeterson/starred",
+                params={"per_page": 100, "page": page},
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Accept": "application/vnd.github.v3+json"
+                },
+                timeout=10,
+            )
+            if response.status_code != 200:
+                logger.warning(f"Failed to fetch stars: {response.status_code}")
+                break
+            
+            data = response.json()
+            if not data:
+                break
+                
+            for repo in data:
+                starred.add(repo["full_name"])
+            
+            if len(data) < 100:
+                break
+            page += 1
+        
+        logger.info(f"Found {len(starred)} current stars")
+        return starred
+        
+    except requests.RequestException as e:
+        logger.warning(f"Failed to fetch current stars: {e}")
+        return set()
+
+
 def get_model_specs(model_name: str) -> dict:
     """
     Fetch model specifications from DeepSeek API at runtime.
@@ -629,6 +677,9 @@ def main():
         # Get already reported repos
         already_uncategorized = get_already_reported_repos(client, uncategorized_issue_num)
         already_discovered = get_already_reported_repos(client, discovery_issue_num)
+        
+        # Get current stars for deduplication (compute efficient: fetch once)
+        current_stars = get_current_stars()
 
         # Filter uncategorized to new ones only (Stage 1)
         new_uncategorized = [
@@ -639,10 +690,12 @@ def main():
 
         # Stage 2: Use all repos (including categorized) for interesting selection
         # This gives models 100 repos to choose from instead of just 3
+        # ALSO filter out repos already starred by user (most compute efficient dedupe)
         new_all_repos = [
             r
             for r in all_repos
             if r["nameWithOwner"] not in already_discovered
+            and r["nameWithOwner"] not in current_stars
         ]
 
         logger.info(f"Stage 1: {len(new_uncategorized)} new uncategorized repos for keywords")
