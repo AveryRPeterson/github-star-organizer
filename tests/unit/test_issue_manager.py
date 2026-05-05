@@ -1,14 +1,41 @@
 import unittest
 from unittest.mock import MagicMock, patch, call
 import datetime
+import json
 from github_star_organizer.issue_manager import (
     get_or_create_weekly_issue,
     get_or_create_weekly_discovery_issue,
     get_already_reported_repos,
     report_uncategorized_repos,
     close_issue,
+    run_command,
     IssueError
 )
+
+
+class TestRunCommand(unittest.TestCase):
+    @patch("subprocess.run")
+    def test_run_command_success(self, mock_run):
+        """Test successful command execution"""
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = "output"
+        mock_run.return_value = mock_result
+
+        result = run_command(["echo", "test"])
+        self.assertEqual(result, "output")
+
+    @patch("subprocess.run")
+    def test_run_command_failure_raises_error(self, mock_run):
+        """Test that command failure raises IssueError"""
+        mock_result = MagicMock()
+        mock_result.returncode = 1
+        mock_result.stderr = "Command failed"
+        mock_run.return_value = mock_result
+
+        with self.assertRaises(IssueError) as context:
+            run_command(["bad", "command"])
+        self.assertIn("Command failed", str(context.exception))
 
 
 class TestGetOrCreateWeeklyIssue(unittest.TestCase):
@@ -121,6 +148,60 @@ class TestGetAlreadyReportedRepos(unittest.TestCase):
         self.assertEqual(result, set())
 
 
+class TestCreateIssueErrors(unittest.TestCase):
+    @patch("github_star_organizer.issue_manager.run_command")
+    @patch("github_star_organizer.issue_manager.datetime")
+    def test_list_issues_json_error_handled(self, mock_datetime, mock_run_command):
+        """Test that JSON decode errors when listing issues are handled"""
+        mock_datetime.date.today.return_value = datetime.date(2026, 5, 2)
+        mock_client = MagicMock()
+        # Return invalid JSON - should be handled gracefully
+        mock_run_command.return_value = "not valid json"
+
+        result = get_or_create_weekly_issue(mock_client)
+        # Should create new issue when listing fails
+        self.assertIsNotNone(result)
+
+    @patch("github_star_organizer.issue_manager.run_command")
+    @patch("github_star_organizer.issue_manager.datetime")
+    def test_create_issue_failure_raises_error(self, mock_datetime, mock_run_command):
+        """Test that issue creation failures raise IssueError"""
+        mock_datetime.date.today.return_value = datetime.date(2026, 5, 2)
+        mock_client = MagicMock()
+        mock_run_command.side_effect = [
+            "[]",  # No existing issues
+            IssueError("Failed to create")  # Creation fails
+        ]
+
+        with self.assertRaises(IssueError):
+            get_or_create_weekly_issue(mock_client)
+
+    @patch("github_star_organizer.issue_manager.run_command")
+    @patch("github_star_organizer.issue_manager.datetime")
+    def test_discovery_list_issues_json_error_handled(self, mock_datetime, mock_run_command):
+        """Test discovery issues JSON decode error handling"""
+        mock_datetime.date.today.return_value = datetime.date(2026, 5, 2)
+        mock_client = MagicMock()
+        mock_run_command.return_value = "invalid json"
+
+        result = get_or_create_weekly_discovery_issue(mock_client)
+        self.assertIsNotNone(result)
+
+    @patch("github_star_organizer.issue_manager.run_command")
+    @patch("github_star_organizer.issue_manager.datetime")
+    def test_discovery_create_failure_raises_error(self, mock_datetime, mock_run_command):
+        """Test discovery issue creation failure raises IssueError"""
+        mock_datetime.date.today.return_value = datetime.date(2026, 5, 2)
+        mock_client = MagicMock()
+        mock_run_command.side_effect = [
+            "[]",
+            IssueError("Failed to create discovery")
+        ]
+
+        with self.assertRaises(IssueError):
+            get_or_create_weekly_discovery_issue(mock_client)
+
+
 class TestReportUncategorizedRepos(unittest.TestCase):
     @patch("github_star_organizer.issue_manager.run_command")
     def test_post_comment_with_repos(self, mock_run_command):
@@ -149,6 +230,27 @@ class TestReportUncategorizedRepos(unittest.TestCase):
         # Verify no command was run
         mock_run_command.assert_not_called()
 
+    @patch("github_star_organizer.issue_manager.run_command")
+    def test_no_op_with_empty_issue_number(self, mock_run_command):
+        """Test that empty issue number is a no-op"""
+        mock_client = MagicMock()
+        repos = [{"nameWithOwner": "owner/repo1", "description": "test"}]
+
+        report_uncategorized_repos(mock_client, "", repos)
+
+        # Verify no command was run
+        mock_run_command.assert_not_called()
+
+    @patch("github_star_organizer.issue_manager.run_command")
+    def test_post_comment_failure_raises_error(self, mock_run_command):
+        """Test that posting failure raises IssueError"""
+        mock_run_command.side_effect = IssueError("Failed to post")
+        mock_client = MagicMock()
+        repos = [{"nameWithOwner": "owner/repo1", "description": "test"}]
+
+        with self.assertRaises(IssueError):
+            report_uncategorized_repos(mock_client, "42", repos)
+
 
 class TestCloseIssue(unittest.TestCase):
     @patch("github_star_organizer.issue_manager.run_command")
@@ -162,13 +264,15 @@ class TestCloseIssue(unittest.TestCase):
         self.assertTrue(mock_run_command.called)
 
     @patch("github_star_organizer.issue_manager.run_command")
-    def test_close_issue_error_handling(self, mock_run_command):
-        """Test error handling when close fails"""
-        mock_run_command.side_effect = IssueError("Failed to close")
+    def test_close_issue_without_reason(self, mock_run_command):
+        """Test closing an issue without adding a reason comment"""
         mock_client = MagicMock()
 
-        with self.assertRaises(IssueError):
-            close_issue(mock_client, "42", "Config updated")
+        close_issue(mock_client, "42", "")
+
+        # Should only close, not comment
+        call_count = mock_run_command.call_count
+        self.assertEqual(call_count, 1)
 
 
 class TestIntegration(unittest.TestCase):
