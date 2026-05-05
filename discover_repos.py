@@ -180,7 +180,7 @@ def _identify_via_deepseek(prompt: str) -> list[str] | None:
 
 def _identify_via_ollama(prompt: str) -> list[str] | None:
     """Call Ollama to identify interesting repos"""
-    api_key = os.getenv("OLLAMA_API_KEY")
+    api_key = os.getenv("OLLAMA_CLOUD_KEY")
     if not api_key:
         logger.warning("OLLAMA_API_KEY not set")
         return None
@@ -193,7 +193,7 @@ def _identify_via_ollama(prompt: str) -> list[str] | None:
                 "Content-Type": "application/json",
             },
             json={
-                "model": "qwen3.5",
+                "model": "gpt-oss:120b",
                 "messages": [
                     {
                         "role": "system",
@@ -207,7 +207,7 @@ def _identify_via_ollama(prompt: str) -> list[str] | None:
         )
 
         if response.status_code != 200:
-            logger.warning(f"Ollama API error: {response.status_code}")
+            logger.warning(f"Ollama API error: {response.status_code} - {response.text}")
             return None
 
         result = response.json()
@@ -326,7 +326,7 @@ def call_ollama_summaries(repos: list[dict]) -> dict[str, dict] | None:
     Returns:
         Dict keyed by nameWithOwner with {purpose, use_case, unusual_applications}, or None on error
     """
-    api_key = os.getenv("OLLAMA_API_KEY")
+    api_key = os.getenv("OLLAMA_CLOUD_KEY")
     if not api_key:
         logger.warning("OLLAMA_API_KEY not set, skipping Ollama analysis")
         return None
@@ -366,7 +366,7 @@ Repositories to analyze:
                 "Content-Type": "application/json",
             },
             json={
-                "model": "qwen3.5",
+                "model": "gpt-oss:120b",
                 "messages": [
                     {
                         "role": "system",
@@ -380,7 +380,7 @@ Repositories to analyze:
         )
 
         if response.status_code != 200:
-            logger.warning(f"Ollama API error: {response.status_code}")
+            logger.warning(f"Ollama API error: {response.status_code} - {response.text}")
             return None
 
         result = response.json()
