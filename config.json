@@ -159,13 +159,15 @@
       "education",
       "\u6559\u6750",
       "course",
-      "learning"
+      "learning",
+      "textbook"
     ],
     "Quantum Computing": [
       "quantum",
       "simulator",
       "quantum-computing",
-      "hiq"
+      "hiq",
+      "distributed"
     ]
   }
 }
