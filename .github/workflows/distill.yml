@@ -32,7 +32,7 @@ jobs:
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v6
         with:
-          token: ${{ secrets.GH_TOKEN }}
+          token: ${{ github.token }}
           commit-message: "Automated: Update config.json keywords from uncategorized stars (${{ steps.distillation.outputs.date_suffix }})"
           title: "Distillation: Update Star Categories (${{ steps.distillation.outputs.date_suffix }})"
           body: |
