@@ -44,3 +44,5 @@ jobs:
             See issue #${{ steps.distillation.outputs.issue_num }} for uncategorized repos.
           branch: "distill-keywords"
           delete-branch: true
+          author: "github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>"
+          committer: "github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>"
