@@ -151,7 +151,11 @@
       "yarn",
       "npm",
       "hacktoberfest",
-      "infrastructure"
+      "infrastructure",
+      "opentofu",
+      "terraform",
+      "iaac",
+      "cloud"
     ],
     "Education & Textbooks": [
       "textbook",
@@ -159,13 +163,18 @@
       "education",
       "\u6559\u6750",
       "course",
-      "learning"
+      "learning",
+      "chinese",
+      "math",
+      "physics"
     ],
     "Quantum Computing": [
       "quantum",
       "simulator",
       "quantum-computing",
-      "hiq"
+      "hiq",
+      "distributed",
+      "high-performance"
     ]
   }
 }
