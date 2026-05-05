@@ -53,16 +53,16 @@ Before pushing changes:
 
 ## Recent Session Example (2026-05-03)
 
-**Task:** Implement weekly find-weird autonomous runner with DeepSeek AI summaries  
+**Task:** Implement weekly discover-repos autonomous runner with DeepSeek AI summaries  
 **Plan:** Pre-written at `docs/superpowers/plans/goofy-swimming-sunrise.md`  
 **Approach:** Inline execution (read plan → implement → test → commit → push)
 
 **Timeline:**
 - Read plan file (spec for all 5 files)
 - Modify issue_manager.py (+1 function)
-- Rewrite find_weird.py (+3 functions, 200 LOC)
-- Create workflow file (.github/workflows/find-weird.yml)
-- Create test file (tests/unit/test_find_weird.py, 13 tests)
+- Rewrite discover_repos.py (+3 functions, 200 LOC)
+- Create workflow file (.github/workflows/discover-repos.yml)
+- Create test file (tests/unit/test_discover_repos.py, 13 tests)
 - Add tests to existing file (tests/unit/test_issue_manager.py, +2 tests)
 - Run full suite: 73 tests passing
 - Commit and push

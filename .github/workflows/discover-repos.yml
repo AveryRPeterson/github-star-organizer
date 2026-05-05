@@ -1,4 +1,4 @@
-name: Find Weird Repos
+name: Discover Repos
 
 on:
   schedule:
@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  find-weird:
+  discover-repos:
     runs-on: ubuntu-latest
     permissions:
       issues: write
@@ -22,17 +22,18 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Find and Report Weird Repos
-        id: find_weird
+      - name: Discover Repos
+        id: discover_repos
         env:
           GH_TOKEN: ${{ github.token }}
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           OLLAMA_CLOUD_KEY: ${{ secrets.OLLAMA_CLOUD_KEY }}
-        run: python find_weird.py
+        run: python discover_repos.py
 
       - name: Report Summary
         if: always()
         run: |
-          echo "Repos found: ${{ steps.find_weird.outputs.repos_found }}"
-          echo "Repos reported: ${{ steps.find_weird.outputs.repos_reported }}"
-          echo "Week: ${{ steps.find_weird.outputs.date_suffix }}"
+          echo "Repos found: ${{ steps.discover_repos.outputs.repos_found }}"
+          echo "Repos reported: ${{ steps.discover_repos.outputs.repos_reported }}"
+          echo "Repos discovered: ${{ steps.discover_repos.outputs.repos_discovered }}"
+          echo "Week: ${{ steps.discover_repos.outputs.date_suffix }}"

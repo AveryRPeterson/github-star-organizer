@@ -224,17 +224,19 @@ class TestFormatDiscoveryComment:
         assert "- **[org2/repo2]" in result  # Link format
 
 
-class TestFindWeirdMain:
+class TestDiscoverReposMain:
     @patch("discover_repos.report_uncategorized_repos")
     @patch("discover_repos.run_parallel_summaries")
     @patch("discover_repos.get_already_reported_repos")
     @patch("discover_repos.get_or_create_weekly_discovery_issue")
     @patch("discover_repos.get_or_create_weekly_issue")
     @patch("discover_repos.search_popular_repos")
+    @patch("discover_repos.get_current_stars")
     @patch("discover_repos.GitHubClient")
     def test_deepseek_failure_still_reports_uncategorized(
         self,
         mock_client_class,
+        mock_stars,
         mock_search,
         mock_get_issue,
         mock_get_discovery,
@@ -273,7 +275,8 @@ class TestFindWeirdMain:
 
     @patch("discover_repos.GitHubClient")
     @patch("discover_repos.search_popular_repos")
-    def test_empty_uncategorized_returns_early(self, mock_search, mock_client_class):
+    @patch("discover_repos.get_current_stars")
+    def test_empty_uncategorized_returns_early(self, mock_stars, mock_search, mock_client_class):
         mock_client = MagicMock()
         mock_client_class.return_value = mock_client
 
@@ -304,10 +307,12 @@ class TestFindWeirdMain:
     @patch("discover_repos.get_or_create_weekly_discovery_issue")
     @patch("discover_repos.get_or_create_weekly_issue")
     @patch("discover_repos.search_popular_repos")
+    @patch("discover_repos.get_current_stars")
     @patch("discover_repos.GitHubClient")
     def test_github_output_written_when_env_set(
         self,
         mock_client_class,
+        mock_stars,
         mock_search,
         mock_get_issue,
         mock_get_discovery,
