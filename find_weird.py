@@ -231,7 +231,7 @@ Repositories to analyze:
                 "Content-Type": "application/json",
             },
             json={
-                "model": "llama2",
+                "model": "qwen3.5",
                 "messages": [
                     {
                         "role": "system",
@@ -368,8 +368,8 @@ def format_discovery_comment(repos: list[dict], model_summaries: dict[str, dict[
 
     # Process Ollama results
     if 'ollama' in model_summaries and model_summaries['ollama']:
-        comment += f"#### Ollama (Llama2) Analysis\n\n"
-        comment += f"**Model:** `llama2`\n"
+        comment += f"#### Ollama Cloud Analysis (Qwen3.5)\n\n"
+        comment += f"**Model:** `qwen3.5`\n"
         comment += f"**Provider:** Ollama Cloud\n\n"
 
         summaries = model_summaries['ollama']
