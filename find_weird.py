@@ -18,18 +18,48 @@ from github_star_organizer.issue_manager import (
 logger = get_logger("find_weird")
 
 
-# Model specifications for transparency
-MODEL_SPECS = {
-    "deepseek-chat": {
-        "version": "latest",
-        "provider": "DeepSeek",
-        "context_window": "32K tokens",
-        "input_cost_per_1m_tokens": "$0.14",
-        "output_cost_per_1m_tokens": "$0.28",
-        "max_tokens": "4096",
-        "docs": "https://platform.deepseek.com/api-docs/",
-    }
-}
+def get_model_specs(model_name: str) -> dict:
+    """
+    Fetch model specifications from DeepSeek API at runtime.
+
+    Args:
+        model_name: Model identifier (e.g., "deepseek-chat")
+
+    Returns:
+        Dict with model specs, or empty dict if unavailable
+    """
+    api_key = os.getenv("DEEPSEEK_API_KEY")
+    if not api_key:
+        return {}
+
+    try:
+        response = requests.get(
+            "https://api.deepseek.com/v1/models",
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=10,
+        )
+
+        if response.status_code != 200:
+            logger.warning(f"Failed to fetch model specs: {response.status_code}")
+            return {}
+
+        data = response.json()
+        # Find the model in the list
+        for model in data.get("data", []):
+            if model.get("id") == model_name:
+                return {
+                    "name": model.get("id"),
+                    "created": model.get("created"),
+                    "owned_by": model.get("owned_by"),
+                    "permission": model.get("permission", [{}])[0].get("allow_create_engine", "N/A"),
+                }
+
+        logger.warning(f"Model {model_name} not found in API response")
+        return {}
+
+    except requests.RequestException as e:
+        logger.warning(f"Failed to fetch model specs from API: {e}")
+        return {}
 
 
 def search_popular_repos(client):
@@ -162,19 +192,21 @@ def format_discovery_comment(repos: list[dict], summaries: dict[str, dict], mode
     Returns:
         Markdown string for GitHub issue comment
     """
-    specs = MODEL_SPECS.get(model, {})
+    specs = get_model_specs(model)
 
     comment = f"### New Discovery Batch\n\n"
-    comment += f"**AI Analysis:** Generated using [{model}]({specs.get('docs', 'https://deepseek.com')})\n\n"
+    comment += f"**AI Analysis:** Generated using `{model}`\n\n"
 
     if specs:
-        comment += "**Model Specs:**\n"
-        comment += f"- **Provider:** {specs.get('provider', 'N/A')}\n"
-        comment += f"- **Context Window:** {specs.get('context_window', 'N/A')}\n"
-        comment += f"- **Max Output Tokens:** {specs.get('max_tokens', 'N/A')}\n"
-        comment += f"- **Input Cost:** {specs.get('input_cost_per_1m_tokens', 'N/A')} per 1M tokens\n"
-        comment += f"- **Output Cost:** {specs.get('output_cost_per_1m_tokens', 'N/A')} per 1M tokens\n"
+        comment += "**Model Information:**\n"
+        comment += f"- **Model:** {specs.get('name', model)}\n"
+        if specs.get('owned_by'):
+            comment += f"- **Provider:** {specs.get('owned_by')}\n"
+        if specs.get('created'):
+            comment += f"- **Created:** {specs.get('created')}\n"
         comment += "\n"
+    else:
+        comment += "_Note: Live model specs unavailable, check [DeepSeek API docs](https://platform.deepseek.com/api-docs/)_\n\n"
 
     for repo in repos:
         name = repo["nameWithOwner"]
