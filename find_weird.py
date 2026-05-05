@@ -136,25 +136,27 @@ Repositories to analyze:
         return None
 
 
-def format_discovery_comment(repos: list[dict], summaries: dict[str, dict]) -> str:
+def format_discovery_comment(repos: list[dict], summaries: dict[str, dict], model: str = "deepseek-chat") -> str:
     """
     Format repositories as markdown comment with AI summaries.
 
     Args:
         repos: List of repository dicts
         summaries: Dict of nameWithOwner -> {purpose, use_case, unusual_applications}
+        model: Model used for AI summaries
 
     Returns:
         Markdown string for GitHub issue comment
     """
-    comment = "### New Discovery Batch\n\n"
+    comment = f"### New Discovery Batch\n\n_AI summaries generated using [{model}](https://deepseek.com)_\n\n"
 
     for repo in repos:
         name = repo["nameWithOwner"]
         desc = repo.get("description") or "No description"
         topics = ", ".join([t["topic"]["name"] for t in repo.get("repositoryTopics", {}).get("nodes", [])])
+        repo_url = f"https://github.com/{name}"
 
-        comment += f"- **{name}**\n"
+        comment += f"- **[{name}]({repo_url})**\n"
         comment += f"  - **Description:** {desc}\n"
         comment += f"  - **Topics:** {topics}\n"
 
@@ -233,7 +235,7 @@ def main():
 
         # Post to discovery issue
         if summaries:
-            comment = format_discovery_comment(new_repos, summaries)
+            comment = format_discovery_comment(new_repos, summaries, model="deepseek-chat")
             try:
                 from github_star_organizer.issue_manager import run_command
                 run_command(["gh", "issue", "comment", discovery_issue_num, "--body", comment])

@@ -25,7 +25,7 @@ jobs:
       - name: Find and Report Weird Repos
         id: find_weird
         env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
         run: python find_weird.py
 
