@@ -161,10 +161,14 @@ class TestIssueManagementWorkflow(unittest.TestCase):
 
         self.assertEqual(issue_num, "42")
 
+    @patch("github_star_organizer.issue_manager.datetime")
     @patch("github_star_organizer.issue_manager.run_command")
-    def test_get_or_create_weekly_issue_exists(self, mock_run_command):
+    def test_get_or_create_weekly_issue_exists(self, mock_run_command, mock_datetime):
         """Test retrieving existing weekly issue"""
-        # Mock: existing issue for this week
+        # Mock: existing issue for this week (week 18)
+        import datetime as dt
+        mock_datetime.date.today.return_value = dt.date(2026, 4, 27)  # Week 18
+
         mock_run_command.return_value = '''[
           {
             "number": 42,
