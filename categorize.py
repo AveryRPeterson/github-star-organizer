@@ -60,12 +60,17 @@ def main():
             if repo["id"] not in categorized:
                 cat = categorize(repo)
                 if cat:
-                    logger.info(f"Categorizing {repo['nameWithOwner']} into {cat}...")
-                    client.run_query("""
-                    mutation($repoId: ID!, $listId: ID!) {
-                      updateUserListsForItem(input: {itemId: $repoId, listIds: [$listId]}) { clientMutationId }
-                    }
-                    """, {"repoId": repo["id"], "listId": config["lists"].get(cat)})
+                    list_id = config["lists"].get(cat)
+                    if list_id:
+                        logger.info(f"Categorizing {repo['nameWithOwner']} into {cat}...")
+                        client.run_query("""
+                        mutation($repoId: ID!, $listId: ID!) {
+                          updateUserListsForItem(input: {itemId: $repoId, listIds: [$listId]}) { clientMutationId }
+                        }
+                        """, {"repoId": repo["id"], "listId": list_id})
+                    else:
+                        logger.info(f"Skipping {repo['nameWithOwner']} (category '{cat}' has no list ID configured)")
+                        skipped_repos.append(repo)
                 else:
                     logger.info(f"Skipping {repo['nameWithOwner']} (no keyword match)")
                     skipped_repos.append(repo)
