@@ -64,10 +64,10 @@ def get_model_specs(model_name: str) -> dict:
 
 
 def search_popular_repos(client):
-    """Search for popular repositories created after 2023"""
+    """Search for uncategorized repositories created after 2023 with lower star threshold"""
     query = """
     query {
-      search(query: "created:>2023-01-01 stars:>5000", type: REPOSITORY, first: 100) {
+      search(query: "created:>2023-01-01 stars:>1000", type: REPOSITORY, first: 100) {
         nodes {
           ... on Repository {
             id
@@ -87,6 +87,141 @@ def search_popular_repos(client):
 def is_categorized(repo):
     """Check if repo is already categorized"""
     return categorize(repo) is not None
+
+
+def identify_interesting_repos(repos: list[dict], model: str = "deepseek") -> list[str] | None:
+    """
+    Ask an LLM to identify 3 unique/strange repos from a list.
+    Returns list of nameWithOwner strings for the interesting repos.
+
+    Args:
+        repos: List of repository dicts with nameWithOwner, description, repositoryTopics
+        model: "deepseek" or "ollama"
+
+    Returns:
+        List of nameWithOwner strings for 3 interesting repos, or None on error
+    """
+    if not repos:
+        return None
+
+    # Build compact repo list
+    repo_list_str = ""
+    for i, repo in enumerate(repos, 1):
+        topics = ", ".join([t["topic"]["name"] for t in repo.get("repositoryTopics", {}).get("nodes", [])])
+        desc = repo.get("description") or "No description"
+        repo_list_str += f"{i}. {repo['nameWithOwner']} | {desc} | topics: {topics}\n"
+
+    user_prompt = f"""Analyze these GitHub repositories and identify exactly 3 that are most unique, unusual, or strange.
+Look for repos that do unconventional things, have surprising use cases, or solve problems in creative ways.
+
+Return ONLY valid JSON with this structure (no explanation):
+{{
+  "interesting_repos": [
+    "owner/repo1",
+    "owner/repo2",
+    "owner/repo3"
+  ]
+}}
+
+Repositories to analyze:
+{repo_list_str}"""
+
+    if model == "deepseek":
+        return _identify_via_deepseek(user_prompt)
+    else:
+        return _identify_via_ollama(user_prompt)
+
+
+def _identify_via_deepseek(prompt: str) -> list[str] | None:
+    """Call DeepSeek to identify interesting repos"""
+    api_key = os.getenv("DEEPSEEK_API_KEY")
+    if not api_key:
+        logger.warning("DEEPSEEK_API_KEY not set")
+        return None
+
+    try:
+        response = requests.post(
+            "https://api.deepseek.com/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": "deepseek-chat",
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": "You are a technical analyst. Return only valid JSON with no explanation.",
+                    },
+                    {"role": "user", "content": prompt},
+                ],
+                "response_format": {"type": "json_object"},
+            },
+            timeout=30,
+        )
+
+        if response.status_code != 200:
+            logger.warning(f"DeepSeek API error: {response.status_code}")
+            return None
+
+        result = response.json()
+        content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
+        if not content:
+            logger.warning("No content in DeepSeek response")
+            return None
+
+        parsed = json.loads(content)
+        return parsed.get("interesting_repos", [])
+
+    except (json.JSONDecodeError, requests.RequestException) as e:
+        logger.warning(f"DeepSeek identification failed: {e}")
+        return None
+
+
+def _identify_via_ollama(prompt: str) -> list[str] | None:
+    """Call Ollama to identify interesting repos"""
+    api_key = os.getenv("OLLAMA_API_KEY")
+    if not api_key:
+        logger.warning("OLLAMA_API_KEY not set")
+        return None
+
+    try:
+        response = requests.post(
+            "https://ollama.com/api/chat",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": "qwen3.5",
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": "You are a technical analyst. Return only valid JSON with no explanation.",
+                    },
+                    {"role": "user", "content": prompt},
+                ],
+                "stream": False,
+            },
+            timeout=30,
+        )
+
+        if response.status_code != 200:
+            logger.warning(f"Ollama API error: {response.status_code}")
+            return None
+
+        result = response.json()
+        content = result.get("message", {}).get("content", "")
+        if not content:
+            logger.warning("No content in Ollama response")
+            return None
+
+        parsed = json.loads(content)
+        return parsed.get("interesting_repos", [])
+
+    except (json.JSONDecodeError, requests.RequestException) as e:
+        logger.warning(f"Ollama identification failed: {e}")
+        return None
 
 
 def call_deepseek_summaries(repos: list[dict]) -> dict[str, dict] | None:
@@ -273,6 +408,64 @@ Repositories to analyze:
         return None
 
 
+def identify_and_summarize_interesting(repos: list[dict]) -> tuple[list[dict], dict[str, dict[str, dict]]] | None:
+    """
+    Two-stage discovery: identify interesting repos, then generate summaries.
+
+    1. Split top 20 repos: even indices to DeepSeek, odd to Ollama
+    2. Each model identifies 3 unique/strange repos from their subset
+    3. Consolidate and deduplicate (aim for ~6 total unique)
+    4. Generate detailed summaries for selected repos
+
+    Args:
+        repos: List of uncategorized repository dicts
+
+    Returns:
+        Tuple of (selected_repos_list, model_summaries_dict) or None on error
+    """
+    if not repos:
+        return None
+
+    # Limit to top 20 for analysis
+    top_20 = repos[:20]
+    logger.info(f"Analyzing top 20 repos with dual-model approach")
+
+    # Split by even/odd indices
+    even_repos = [repo for i, repo in enumerate(top_20) if i % 2 == 0]  # indices 0,2,4,6...
+    odd_repos = [repo for i, repo in enumerate(top_20) if i % 2 == 1]   # indices 1,3,5,7...
+
+    logger.info(f"DeepSeek analyzing {len(even_repos)} repos (even indices)")
+    logger.info(f"Ollama analyzing {len(odd_repos)} repos (odd indices)")
+
+    # Identify interesting repos from each subset
+    deepseek_interesting = identify_interesting_repos(even_repos, model="deepseek")
+    ollama_interesting = identify_interesting_repos(odd_repos, model="ollama")
+
+    # Consolidate results
+    interesting_names = set()
+    if deepseek_interesting:
+        interesting_names.update(deepseek_interesting)
+        logger.info(f"DeepSeek identified: {deepseek_interesting}")
+    if ollama_interesting:
+        interesting_names.update(ollama_interesting)
+        logger.info(f"Ollama identified: {ollama_interesting}")
+
+    if not interesting_names:
+        logger.warning("No interesting repos identified by either model")
+        return None
+
+    logger.info(f"Consolidated {len(interesting_names)} unique interesting repos")
+
+    # Filter original repos to only selected ones
+    selected_repos = [r for r in repos if r["nameWithOwner"] in interesting_names]
+    logger.info(f"Selected {len(selected_repos)} repos for detailed analysis")
+
+    # Generate summaries for selected repos
+    summaries = run_parallel_summaries(selected_repos)
+
+    return (selected_repos, summaries)
+
+
 def run_parallel_summaries(repos: list[dict]) -> dict[str, dict[str, dict]]:
     """
     Run DeepSeek and Ollama summaries in parallel.
@@ -453,22 +646,28 @@ def main():
                     f.write(f"date_suffix={date_suffix}\n")
             return
 
-        logger.info(f"Preparing to report {len(new_repos)} new repos")
+        logger.info(f"Preparing to analyze {len(new_repos)} new repos")
 
-        # Get AI summaries from multiple models in parallel
-        model_summaries = run_parallel_summaries(new_repos)
+        # Two-stage discovery: identify interesting repos, then summarize them
+        result = identify_and_summarize_interesting(new_repos)
 
-        # Post to discovery issue
-        if model_summaries:
-            comment = format_discovery_comment(new_repos, model_summaries)
-            try:
-                from github_star_organizer.issue_manager import run_command
-                run_command(["gh", "issue", "comment", discovery_issue_num, "--body", comment])
-                logger.info(f"Posted discovery summary to issue #{discovery_issue_num}")
-            except IssueError as e:
-                logger.error(f"Failed to post discovery comment: {e}")
+        if result:
+            selected_repos, model_summaries = result
+            logger.info(f"Selected {len(selected_repos)} interesting repos for discovery")
+
+            # Post to discovery issue
+            if model_summaries:
+                comment = format_discovery_comment(selected_repos, model_summaries)
+                try:
+                    from github_star_organizer.issue_manager import run_command
+                    run_command(["gh", "issue", "comment", discovery_issue_num, "--body", comment])
+                    logger.info(f"Posted discovery summary to issue #{discovery_issue_num}")
+                except IssueError as e:
+                    logger.error(f"Failed to post discovery comment: {e}")
+            else:
+                logger.warning("Summary generation failed; discovery issue not updated")
         else:
-            logger.warning("Both DeepSeek and Ollama failed; discovery issue not updated")
+            logger.warning("Repo identification failed; discovery issue not updated")
 
         # Post to uncategorized issue
         report_uncategorized_repos(client, uncategorized_issue_num, new_repos)
