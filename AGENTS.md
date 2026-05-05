@@ -96,6 +96,32 @@ Before pushing changes:
 - **Why:** Internal code already validated by tests
 - **How to apply:** Use custom exceptions (IssueError, GitHubAPIError); log and fail gracefully
 
+## Discovery Dedupe Pattern (2026-05-05)
+
+When the discovery workflow runs multiple times, duplicates appear because:
+- LLM can pick the same repos in different runs
+- Repos previously reported in earlier comments can be picked again
+
+**Solution (most compute efficient):**
+
+1. **Primary dedupe (before LLM):** Filter out repos already starred by user
+   - Fetch once per run in `get_current_stars()`
+   - O(n) set lookup during filtering
+   
+2. **Secondary dedupe (after LLM, optional):** Filter selected repos against prior comments
+   - Already in `already_discovered` set from `get_already_reported_repos()`
+   - Only needed if LLM selection might overlap with historic comments
+
+Example in `discover_repos.py`:
+```python
+current_stars = get_current_stars()  # Fetch once
+new_all_repos = [
+    r for r in all_repos
+    if r["nameWithOwner"] not in already_discovered
+    and r["nameWithOwner"] not in current_stars  # Primary dedupe
+]
+```
+
 ## Preferred Skills for This Project
 
 | Task | Skill | Why |

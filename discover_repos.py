@@ -32,6 +32,7 @@ def get_current_stars() -> set[str]:
         return set()
     
     try:
+        # Paginate through all starred repos (max 100 per page)
         starred = set()
         page = 1
         while True:
@@ -690,7 +691,7 @@ def main():
 
         # Stage 2: Use all repos (including categorized) for interesting selection
         # This gives models 100 repos to choose from instead of just 3
-        # ALSO filter out repos already starred by user (most compute efficient dedupe)
+        # ALSO filter out repos already starred by user (most compute efficient dedupe - O(1) lookup)
         new_all_repos = [
             r
             for r in all_repos
