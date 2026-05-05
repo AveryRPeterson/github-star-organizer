@@ -225,7 +225,7 @@ Repositories to analyze:
 
     try:
         response = requests.post(
-            "https://api.ollama.ai/v1/chat/completions",
+            "https://ollama.com/api/chat",
             headers={
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
@@ -239,6 +239,7 @@ Repositories to analyze:
                     },
                     {"role": "user", "content": user_prompt},
                 ],
+                "stream": False,
             },
             timeout=30,
         )
@@ -248,7 +249,8 @@ Repositories to analyze:
             return None
 
         result = response.json()
-        content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
+        # Ollama API response format: {"message": {"role": "assistant", "content": "..."}}
+        content = result.get("message", {}).get("content", "")
         if not content:
             logger.warning("No content in Ollama response")
             return None
