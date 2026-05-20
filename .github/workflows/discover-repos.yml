@@ -32,8 +32,13 @@ jobs:
 
       - name: Report Summary
         if: always()
+        env:
+          REPOS_FOUND: ${{ steps.discover_repos.outputs.repos_found }}
+          REPOS_REPORTED: ${{ steps.discover_repos.outputs.repos_reported }}
+          REPOS_DISCOVERED: ${{ steps.discover_repos.outputs.repos_discovered }}
+          DATE_SUFFIX: ${{ steps.discover_repos.outputs.date_suffix }}
         run: |
-          echo "Repos found: ${{ steps.discover_repos.outputs.repos_found }}"
-          echo "Repos reported: ${{ steps.discover_repos.outputs.repos_reported }}"
-          echo "Repos discovered: ${{ steps.discover_repos.outputs.repos_discovered }}"
-          echo "Week: ${{ steps.discover_repos.outputs.date_suffix }}"
+          echo "Repos found: $REPOS_FOUND"
+          echo "Repos reported: $REPOS_REPORTED"
+          echo "Repos discovered: $REPOS_DISCOVERED"
+          echo "Week: $DATE_SUFFIX"
