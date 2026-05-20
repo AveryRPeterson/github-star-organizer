@@ -15,6 +15,11 @@ from github_star_organizer.config import load_config, ConfigError
 logger = get_logger("categorize")
 
 
+def get_or_create_issue():
+    """Get or create the weekly uncategorized stars tracking issue."""
+    return get_or_create_weekly_issue(None)
+
+
 def main():
     try:
         # Load and validate config
