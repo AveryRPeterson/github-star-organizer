@@ -44,6 +44,8 @@ def get_or_create_weekly_issue(client) -> str | None:
                           "--search", 'in:title "Uncategorized Stars" author:@me',
                           "--json", "number,title"])
         open_issues = json.loads(res) if res else []
+        if not isinstance(open_issues, list):
+            open_issues = []
     except (json.JSONDecodeError, IssueError):
         open_issues = []
 
@@ -184,6 +186,8 @@ def get_or_create_weekly_discovery_issue(client) -> str | None:
                           "--search", 'in:title "Interesting Discoveries" author:@me',
                           "--json", "number,title"])
         open_issues = json.loads(res) if res else []
+        if not isinstance(open_issues, list):
+            open_issues = []
     except (json.JSONDecodeError, IssueError):
         open_issues = []
 
