@@ -159,11 +159,15 @@ Return ONLY the complete updated `config.json` object.
                 date_suffix = issue_title.split(": ")[-1] if ": " in issue_title else ""
 
                 # Write outputs for GitHub Actions
+                has_changes = (
+                    summary["new_keywords_added"] > 0 or summary["new_categories"] > 0
+                )
                 if "GITHUB_OUTPUT" in os.environ:
                     with open(os.environ["GITHUB_OUTPUT"], "a") as f:
                         f.write(f"date_suffix={date_suffix}\n")
                         f.write(f"issue_num={issue_number}\n")
                         f.write(f"summary={json.dumps(summary)}\n")
+                        f.write(f"has_changes={'true' if has_changes else 'false'}\n")
 
             except json.JSONDecodeError as e:
                 logger.error(f"Failed to parse DeepSeek response: {e}")

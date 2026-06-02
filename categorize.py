@@ -4,24 +4,21 @@ from github_star_organizer.gh_client import GitHubClient, GitHubAPIError
 from github_star_organizer.categorizer import categorize, get_categorized_ids, get_recent_stars
 from github_star_organizer.issue_manager import (
     get_or_create_weekly_issue,
-    get_already_reported_repos,
     report_uncategorized_repos,
     IssueError
 )
 from github_star_organizer.logger import get_logger
 from github_star_organizer.config import load_config, ConfigError
+from github_star_organizer import state_db
 
 
 logger = get_logger("categorize")
 
 
-def get_or_create_issue():
-    """Get or create the weekly uncategorized stars tracking issue."""
-    return get_or_create_weekly_issue(None)
-
-
 def main():
     try:
+        state_db.init_db()
+
         # Load and validate config
         config = load_config()
         logger.info("Config loaded successfully")
@@ -82,20 +79,24 @@ def main():
             else:
                 logger.info(f"Skipping {repo['nameWithOwner']} (already categorized)")
 
-        # Report uncategorized repos
+        # Report uncategorized repos — only create/comment when genuinely new
         if skipped_repos:
-            logger.info(f"Preparing to report {len(skipped_repos)} uncategorized repos...")
-            issue_num = get_or_create_weekly_issue(client)
-            if issue_num:
-                already_reported = get_already_reported_repos(client, issue_num)
-                new_to_report = [repo for repo in skipped_repos
-                               if repo['nameWithOwner'] not in already_reported]
+            logger.info(f"Found {len(skipped_repos)} uncategorized repos, checking against state DB...")
+            already_reported = state_db.get_uncategorized_repos()
+            new_to_report = [r for r in skipped_repos
+                             if r['nameWithOwner'] not in already_reported]
 
-                if new_to_report:
+            if new_to_report:
+                logger.info(f"Reporting {len(new_to_report)} new uncategorized repos...")
+                issue_num = get_or_create_weekly_issue(client, create=False)
+                if not issue_num:
+                    issue_num = get_or_create_weekly_issue(client, create=True)
+                if issue_num:
                     report_uncategorized_repos(client, issue_num, new_to_report)
+                    state_db.insert_uncategorized_repos(new_to_report, issue_num)
                     logger.info(f"Comment added to issue #{issue_num}")
-                else:
-                    logger.info("All skipped repos have already been reported")
+            else:
+                logger.info("No new uncategorized repos to report")
 
     except ConfigError as e:
         logger.error(f"Configuration error: {e}")

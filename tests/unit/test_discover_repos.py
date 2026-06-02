@@ -1,8 +1,10 @@
 import os
 import json
+import datetime
 import pytest
 from unittest.mock import patch, MagicMock, mock_open
 import discover_repos
+from github_star_organizer import issue_manager
 
 
 class TestSearchPopularRepos:
@@ -144,92 +146,93 @@ class TestCallDeepseekSummaries:
         assert result is None
 
 
-class TestFormatDiscoveryComment:
-    def test_format_with_summaries_includes_all_ai_fields(self):
-        repos = [
-            {
-                "nameWithOwner": "owner/repo",
-                "description": "Test repo",
-                "repositoryTopics": {"nodes": [{"topic": {"name": "python"}}, {"topic": {"name": "testing"}}]},
-            }
-        ]
+class TestCreateDiscoveryIssue:
+    """Tests for the per-repo issue creation in issue_manager."""
+
+    @patch("github_star_organizer.issue_manager.run_command")
+    def test_creates_issue_with_star_link(self, mock_run):
+        mock_run.return_value = "https://github.com/owner/repo/issues/42"
+        repo = {
+            "nameWithOwner": "owner/repo",
+            "description": "A cool repo",
+            "repositoryTopics": {"nodes": [{"topic": {"name": "python"}}]},
+        }
         model_summaries = {
             "deepseek": {
                 "owner/repo": {
-                    "purpose": "A testing framework",
-                    "use_case": "Unit testing",
-                    "unusual_applications": ["Load testing", "Chaos testing", "Contract testing"],
+                    "purpose": "Test tool",
+                    "use_case": "Dev testing",
+                    "unusual_applications": ["App1", "App2", "App3"],
                 }
             }
         }
 
-        result = discover_repos.format_discovery_comment(repos, model_summaries)
+        result = issue_manager.create_discovery_issue(repo, model_summaries)
 
-        assert "### New Discovery Batch" in result
-        assert "- **[owner/repo]" in result  # Link format
-        assert "**Description:**" in result
-        assert "**Purpose:** A testing framework" in result
-        assert "**Suggested Use Case:** Unit testing" in result
-        assert "**Unusual Applications:**" in result
-        assert "Load testing" in result
-        assert "Chaos testing" in result
-        assert "Contract testing" in result
+        assert result == "42"
+        call_args = mock_run.call_args[0][0]
+        assert call_args[0] == "gh"
+        assert call_args[2] == "create"
+        body_idx = call_args.index("--body") + 1
+        body = call_args[body_idx]
+        assert "⭐ View & Star on GitHub" in body
+        assert "https://github.com/owner/repo" in body
+        assert "DeepSeek Analysis" in body
+        assert "Test tool" in body
+        assert "App1" in body
 
-    def test_format_without_summaries_falls_back_to_description(self):
-        repos = [
-            {
-                "nameWithOwner": "owner/repo",
-                "description": "Test repo",
-                "repositoryTopics": {"nodes": [{"topic": {"name": "python"}}]},
-            }
-        ]
-        model_summaries = {}
-
-        result = discover_repos.format_discovery_comment(repos, model_summaries)
-
-        # With no summaries, should only show the New Discovery Batch header
-        assert "### New Discovery Batch" in result
-
-    def test_every_entry_starts_with_markdown_format(self):
-        repos = [
-            {
-                "nameWithOwner": "org1/repo1",
-                "description": "Repo 1",
-                "repositoryTopics": {"nodes": []},
-            },
-            {
-                "nameWithOwner": "org2/repo2",
-                "description": "Repo 2",
-                "repositoryTopics": {"nodes": []},
-            },
-        ]
+    @patch("github_star_organizer.issue_manager.run_command")
+    def test_includes_both_model_sections_when_available(self, mock_run):
+        mock_run.return_value = "https://github.com/owner/repo/issues/43"
+        repo = {
+            "nameWithOwner": "owner/repo",
+            "description": "A cool repo",
+            "repositoryTopics": {"nodes": []},
+        }
         model_summaries = {
             "deepseek": {
-                "org1/repo1": {
-                    "purpose": "Repo 1 purpose",
-                    "use_case": "Use case 1",
-                    "unusual_applications": ["App1", "App2", "App3"],
-                },
-                "org2/repo2": {
-                    "purpose": "Repo 2 purpose",
-                    "use_case": "Use case 2",
-                    "unusual_applications": ["App1", "App2", "App3"],
-                },
-            }
+                "owner/repo": {
+                    "purpose": "DS purpose",
+                    "use_case": "DS use case",
+                    "unusual_applications": ["DS App1"],
+                }
+            },
+            "ollama": {
+                "owner/repo": {
+                    "purpose": "OL purpose",
+                    "use_case": "OL use case",
+                    "unusual_applications": ["OL App1"],
+                }
+            },
         }
 
-        result = discover_repos.format_discovery_comment(repos, model_summaries)
+        result = issue_manager.create_discovery_issue(repo, model_summaries)
 
-        assert "- **[org1/repo1]" in result  # Link format
-        assert "- **[org2/repo2]" in result  # Link format
+        body = mock_run.call_args[0][0][mock_run.call_args[0][0].index("--body") + 1]
+        assert "DeepSeek Analysis" in body
+        assert "Ollama Analysis" in body
+        assert "DS purpose" in body
+        assert "OL purpose" in body
+
+    @patch("github_star_organizer.issue_manager.run_command")
+    def test_title_format(self, mock_run):
+        mock_run.return_value = "https://github.com/owner/my-repo/issues/10"
+        repo = {
+            "nameWithOwner": "owner/my-repo",
+            "description": "desc",
+            "repositoryTopics": {"nodes": []},
+        }
+        issue_manager.create_discovery_issue(repo, {})
+
+        call_args = mock_run.call_args[0][0]
+        title_idx = call_args.index("--title") + 1
+        assert call_args[title_idx] == "Discovered: owner/my-repo"
 
 
 class TestDiscoverReposMain:
     @patch("discover_repos.report_uncategorized_repos")
-    @patch("discover_repos.run_parallel_summaries")
-    @patch("discover_repos.get_already_reported_repos")
-    @patch("discover_repos.get_or_create_weekly_discovery_issue")
     @patch("discover_repos.get_or_create_weekly_issue")
+    @patch("discover_repos.state_db")
     @patch("discover_repos.search_popular_repos")
     @patch("discover_repos.get_current_stars")
     @patch("discover_repos.GitHubClient")
@@ -238,15 +241,12 @@ class TestDiscoverReposMain:
         mock_client_class,
         mock_stars,
         mock_search,
+        mock_db,
         mock_get_issue,
-        mock_get_discovery,
-        mock_get_reported,
-        mock_parallel,
         mock_report,
     ):
-        mock_client = MagicMock()
-        mock_client_class.return_value = mock_client
-
+        mock_client_class.return_value = MagicMock()
+        mock_stars.return_value = set()
         mock_search.return_value = {
             "data": {
                 "search": {
@@ -261,25 +261,25 @@ class TestDiscoverReposMain:
                 }
             }
         }
-
+        mock_db.get_uncategorized_repos.return_value = set()
+        mock_db.get_discovered_repos.return_value = set()
+        mock_db.get_issue_number_for_discovered.return_value = None
         mock_get_issue.return_value = "123"
-        mock_get_discovery.return_value = "124"
-        mock_get_reported.return_value = set()
-        mock_parallel.return_value = {}  # Both models fail, return empty dict
 
         with patch("discover_repos.is_categorized", return_value=False):
-            discover_repos.main()
+            with patch("discover_repos.identify_and_summarize_interesting", return_value=None):
+                discover_repos.main()
 
-        # Should still call report_uncategorized_repos even if both models failed
+        # Should still report uncategorized even if discovery fails
         mock_report.assert_called_once()
 
+    @patch("discover_repos.state_db")
     @patch("discover_repos.GitHubClient")
     @patch("discover_repos.search_popular_repos")
     @patch("discover_repos.get_current_stars")
-    def test_empty_uncategorized_returns_early(self, mock_stars, mock_search, mock_client_class):
-        mock_client = MagicMock()
-        mock_client_class.return_value = mock_client
-
+    def test_empty_uncategorized_returns_early(self, mock_stars, mock_search, mock_client_class, mock_db):
+        mock_client_class.return_value = MagicMock()
+        mock_stars.return_value = set()
         mock_search.return_value = {
             "data": {
                 "search": {
@@ -294,18 +294,19 @@ class TestDiscoverReposMain:
                 }
             }
         }
+        mock_db.get_uncategorized_repos.return_value = set()
+        mock_db.get_discovered_repos.return_value = set()
 
         with patch("discover_repos.is_categorized", return_value=True):
-            discover_repos.main()
-
-        # Should not try to create issues if no uncategorized repos
+            with patch("discover_repos.identify_and_summarize_interesting", return_value=None) as mock_identify:
+                discover_repos.main()
+                # With all repos categorized, uncategorized list is empty
+                # identify_and_summarize_interesting may still be called for interesting selection
 
     @patch("builtins.open", new_callable=mock_open)
     @patch("discover_repos.report_uncategorized_repos")
-    @patch("discover_repos.run_parallel_summaries")
-    @patch("discover_repos.get_already_reported_repos")
-    @patch("discover_repos.get_or_create_weekly_discovery_issue")
     @patch("discover_repos.get_or_create_weekly_issue")
+    @patch("discover_repos.state_db")
     @patch("discover_repos.search_popular_repos")
     @patch("discover_repos.get_current_stars")
     @patch("discover_repos.GitHubClient")
@@ -314,16 +315,13 @@ class TestDiscoverReposMain:
         mock_client_class,
         mock_stars,
         mock_search,
+        mock_db,
         mock_get_issue,
-        mock_get_discovery,
-        mock_get_reported,
-        mock_parallel,
         mock_report,
         mock_file,
     ):
-        mock_client = MagicMock()
-        mock_client_class.return_value = mock_client
-
+        mock_client_class.return_value = MagicMock()
+        mock_stars.return_value = set()
         mock_search.return_value = {
             "data": {
                 "search": {
@@ -338,15 +336,15 @@ class TestDiscoverReposMain:
                 }
             }
         }
-
+        mock_db.get_uncategorized_repos.return_value = set()
+        mock_db.get_discovered_repos.return_value = set()
+        mock_db.get_issue_number_for_discovered.return_value = None
         mock_get_issue.return_value = "123"
-        mock_get_discovery.return_value = "124"
-        mock_get_reported.return_value = set()
-        mock_parallel.return_value = {}
 
         with patch.dict(os.environ, {"GITHUB_OUTPUT": "/tmp/output"}):
             with patch("discover_repos.is_categorized", return_value=False):
-                discover_repos.main()
+                with patch("discover_repos.identify_and_summarize_interesting", return_value=None):
+                    discover_repos.main()
 
         # Should write to GITHUB_OUTPUT
         mock_file.assert_called()
