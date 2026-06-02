@@ -246,49 +246,60 @@ def _identify_via_deepseek(prompt: str) -> list[str] | None:
 
 
 def _identify_via_ollama(prompt: str) -> list[str] | None:
-    """Call Ollama to identify interesting repos"""
+    """Call Ollama to identify interesting repos with 3-tier fallback to DeepSeek"""
     api_key = os.getenv("OLLAMA_CLOUD_KEY")
     if not api_key:
-        logger.warning("OLLAMA_API_KEY not set")
-        return None
+        logger.warning("OLLAMA_CLOUD_KEY not set, falling back to DeepSeek")
+        return _identify_via_deepseek(prompt)
 
-    try:
-        response = requests.post(
-            "https://ollama.com/api/chat",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": "gpt-oss:120b",
-                "messages": [
-                    {
-                        "role": "system",
-                        "content": "You are a technical analyst. Return only valid JSON with no explanation.",
-                    },
-                    {"role": "user", "content": prompt},
-                ],
-                "stream": False,
-            },
-            timeout=30,
-        )
+    # Try 3 tiers of Ollama models before falling back to DeepSeek
+    ollama_models = ["dolphin-mixtral", "neural-chat", "mistral"]
 
-        if response.status_code != 200:
-            logger.warning(f"Ollama API error: {response.status_code} - {response.text}")
-            return None
+    for model in ollama_models:
+        try:
+            logger.info(f"Trying Ollama with model: {model}")
+            response = requests.post(
+                "https://ollama.com/api/chat",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": model,
+                    "messages": [
+                        {
+                            "role": "system",
+                            "content": "You are a technical analyst. Return only valid JSON with no explanation.",
+                        },
+                        {"role": "user", "content": prompt},
+                    ],
+                    "stream": False,
+                },
+                timeout=30,
+            )
 
-        result = response.json()
-        content = result.get("message", {}).get("content", "")
-        if not content:
-            logger.warning("No content in Ollama response")
-            return None
+            if response.status_code == 200:
+                result = response.json()
+                content = result.get("message", {}).get("content", "")
+                if content:
+                    try:
+                        parsed = json.loads(content)
+                        repos = parsed.get("interesting_repos", [])
+                        if repos:
+                            logger.info(f"Ollama {model} successful")
+                            return repos
+                    except json.JSONDecodeError:
+                        logger.warning(f"Ollama {model} returned invalid JSON")
+                        continue
+            else:
+                logger.warning(f"Ollama {model} API error: {response.status_code}")
+        except requests.RequestException as e:
+            logger.warning(f"Ollama {model} request failed: {e}")
+            continue
 
-        parsed = json.loads(content)
-        return parsed.get("interesting_repos", [])
-
-    except (json.JSONDecodeError, requests.RequestException) as e:
-        logger.warning(f"Ollama identification failed: {e}")
-        return None
+    # All Ollama tiers failed, fall back to DeepSeek
+    logger.warning("All Ollama models exhausted, falling back to DeepSeek")
+    return _identify_via_deepseek(prompt)
 
 
 def call_deepseek_summaries(repos: list[dict]) -> dict[str, dict] | None:
@@ -385,7 +396,7 @@ Repositories to analyze:
 
 def call_ollama_summaries(repos: list[dict]) -> dict[str, dict] | None:
     """
-    Call Ollama Cloud API to generate summaries for uncategorized repos.
+    Call Ollama Cloud API to generate summaries with 3-tier fallback to DeepSeek.
 
     Args:
         repos: List of repository dicts
@@ -395,8 +406,8 @@ def call_ollama_summaries(repos: list[dict]) -> dict[str, dict] | None:
     """
     api_key = os.getenv("OLLAMA_CLOUD_KEY")
     if not api_key:
-        logger.warning("OLLAMA_API_KEY not set, skipping Ollama analysis")
-        return None
+        logger.warning("OLLAMA_CLOUD_KEY not set, falling back to DeepSeek")
+        return call_deepseek_summaries(repos)
 
     repo_list_str = ""
     for i, repo in enumerate(repos, 1):
@@ -425,54 +436,60 @@ Return ONLY valid JSON with this structure:
 Repositories to analyze:
 {repo_list_str}"""
 
-    try:
-        response = requests.post(
-            "https://ollama.com/api/chat",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": "gpt-oss:120b",
-                "messages": [
-                    {
-                        "role": "system",
-                        "content": "You are a technical analyst for a GitHub repository discovery tool. Return only valid JSON with no explanation.",
-                    },
-                    {"role": "user", "content": user_prompt},
-                ],
-                "stream": False,
-            },
-            timeout=30,
-        )
+    # Try 3 tiers of Ollama models before falling back to DeepSeek
+    ollama_models = ["dolphin-mixtral", "neural-chat", "mistral"]
 
-        if response.status_code != 200:
-            logger.warning(f"Ollama API error: {response.status_code} - {response.text}")
-            return None
+    for model in ollama_models:
+        try:
+            logger.info(f"Trying Ollama with model: {model}")
+            response = requests.post(
+                "https://ollama.com/api/chat",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": model,
+                    "messages": [
+                        {
+                            "role": "system",
+                            "content": "You are a technical analyst for a GitHub repository discovery tool. Return only valid JSON with no explanation.",
+                        },
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    "stream": False,
+                },
+                timeout=30,
+            )
 
-        result = response.json()
-        # Ollama API response format: {"message": {"role": "assistant", "content": "..."}}
-        content = result.get("message", {}).get("content", "")
-        if not content:
-            logger.warning("No content in Ollama response")
-            return None
+            if response.status_code == 200:
+                result = response.json()
+                content = result.get("message", {}).get("content", "")
+                if content:
+                    try:
+                        parsed = json.loads(content)
+                        summaries = {}
+                        for repo_data in parsed.get("repos", []):
+                            summaries[repo_data["nameWithOwner"]] = {
+                                "purpose": repo_data.get("purpose", ""),
+                                "use_case": repo_data.get("use_case", ""),
+                                "unusual_applications": repo_data.get("unusual_applications", []),
+                            }
+                        if summaries:
+                            logger.info(f"Ollama {model} successful")
+                            return summaries
+                    except json.JSONDecodeError:
+                        logger.warning(f"Ollama {model} returned invalid JSON")
+                        continue
+            else:
+                logger.warning(f"Ollama {model} API error: {response.status_code}")
+        except requests.RequestException as e:
+            logger.warning(f"Ollama {model} request failed: {e}")
+            continue
 
-        parsed = json.loads(content)
-        summaries = {}
-        for repo_data in parsed.get("repos", []):
-            summaries[repo_data["nameWithOwner"]] = {
-                "purpose": repo_data.get("purpose", ""),
-                "use_case": repo_data.get("use_case", ""),
-                "unusual_applications": repo_data.get("unusual_applications", []),
-            }
-        return summaries
-
-    except json.JSONDecodeError as e:
-        logger.warning(f"Failed to parse Ollama response: {e}")
-        return None
-    except requests.RequestException as e:
-        logger.warning(f"Ollama request failed: {e}")
-        return None
+    # All Ollama tiers failed, fall back to DeepSeek
+    logger.warning("All Ollama models exhausted, falling back to DeepSeek")
+    return call_deepseek_summaries(repos)
 
 
 def identify_and_summarize_interesting(repos: list[dict], current_stars: set[str] | None = None) -> tuple[list[dict], dict[str, dict[str, dict]]] | None:
