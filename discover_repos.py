@@ -138,18 +138,19 @@ def is_categorized(repo):
     return categorize(repo) is not None
 
 
-def identify_interesting_repos(repos: list[dict], model: str = "deepseek", current_stars: set[str] | None = None) -> list[str] | None:
+def identify_interesting_repos(repos: list[dict], model: str = "deepseek", current_stars: set[str] | None = None, count: int = 3) -> list[str] | None:
     """
-    Ask an LLM to identify 3 unique/strange repos from a list.
+    Ask an LLM to identify unique/strange repos from a list.
     Returns list of nameWithOwner strings for the interesting repos.
 
     Args:
         repos: List of repository dicts with nameWithOwner, description, repositoryTopics
         model: "deepseek" or "ollama"
         current_stars: Set of repos already starred by user (to exclude from suggestions)
+        count: Number of repos to identify
 
     Returns:
-        List of nameWithOwner strings for 3 interesting repos, or None on error
+        List of nameWithOwner strings for interesting repos, or None on error
     """
     if not repos:
         return None
@@ -170,8 +171,8 @@ IMPORTANT: The user has already starred these repos - do NOT suggest them:
 {', '.join(starred_list)}
 
 """
-    
-    user_prompt = f"""Analyze these GitHub repositories and identify exactly 3 that are most unique, unusual, or strange.
+
+    user_prompt = f"""Analyze these GitHub repositories and identify exactly {count} that are most unique, unusual, or strange.
 Look for repos that do unconventional things, have surprising use cases, or solve problems in creative ways.
 
 {starred_note}Return ONLY valid JSON with this structure (no explanation):
@@ -472,10 +473,9 @@ def identify_and_summarize_interesting(repos: list[dict], current_stars: set[str
     """
     Two-stage discovery: identify interesting repos, then generate summaries.
 
-    1. Split top 20 repos: even indices to DeepSeek, odd to Ollama
-    2. Each model identifies 3 unique/strange repos from their subset
-    3. Consolidate and deduplicate (aim for ~6 total unique)
-    4. Generate detailed summaries for selected repos
+    1. Split repos in half: first half to DeepSeek (identifies 7), second half to Ollama (identifies 6)
+    2. Consolidate and deduplicate (13 total unique, no overlap since halves are disjoint)
+    3. Generate detailed summaries for selected repos
 
     Args:
         repos: List of uncategorized repository dicts
@@ -487,20 +487,18 @@ def identify_and_summarize_interesting(repos: list[dict], current_stars: set[str
     if not repos:
         return None
 
-    # Limit to top 20 for analysis
-    top_20 = repos[:20]
-    logger.info(f"Analyzing top 20 repos with dual-model approach")
+    # Split list in half: first half to DeepSeek, second half to Ollama
+    mid = len(repos) // 2
+    deepseek_repos = repos[:mid]
+    ollama_repos = repos[mid:]
 
-    # Split by even/odd indices
-    even_repos = [repo for i, repo in enumerate(top_20) if i % 2 == 0]  # indices 0,2,4,6...
-    odd_repos = [repo for i, repo in enumerate(top_20) if i % 2 == 1]   # indices 1,3,5,7...
+    logger.info(f"DeepSeek analyzing {len(deepseek_repos)} repos (first half)")
+    logger.info(f"Ollama analyzing {len(ollama_repos)} repos (second half)")
 
-    logger.info(f"DeepSeek analyzing {len(even_repos)} repos (even indices)")
-    logger.info(f"Ollama analyzing {len(odd_repos)} repos (odd indices)")
-
-    # Identify interesting repos from each subset (pass starred repos to avoid)
-    deepseek_interesting = identify_interesting_repos(even_repos, model="deepseek", current_stars=current_stars)
-    ollama_interesting = identify_interesting_repos(odd_repos, model="ollama", current_stars=current_stars)
+    # Identify interesting repos from each half (pass starred repos to avoid)
+    # 7 + 6 = 13 total; halves are disjoint so no duplicates after consolidation
+    deepseek_interesting = identify_interesting_repos(deepseek_repos, model="deepseek", current_stars=current_stars, count=7)
+    ollama_interesting = identify_interesting_repos(ollama_repos, model="ollama", current_stars=current_stars, count=6)
 
     # Consolidate results
     interesting_names = set()
