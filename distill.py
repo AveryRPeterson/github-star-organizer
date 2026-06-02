@@ -36,7 +36,7 @@ def get_latest_uncategorized_issue():
 def get_issue_comments(issue_number):
     """Get comments from an issue (only from owner)"""
     try:
-        user = run_command(["gh", "api", "user", "-q", ".login"])
+        user = run_command(["gh", "api", "user", "--json", "login", "-q", ".login"])
         if not user:
             logger.error("Could not determine current user")
             return ""
@@ -72,7 +72,7 @@ def call_deepseek(prompt):
     }
 
     try:
-        response = requests.post(url, headers=headers, json=data)
+        response = requests.post(url, headers=headers, json=data, timeout=30)
         if response.status_code == 200:
             return response.json()['choices'][0]['message']['content']
         else:

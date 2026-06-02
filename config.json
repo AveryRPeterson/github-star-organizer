@@ -8,7 +8,9 @@
     "OS & Customization": "UL_kwDOAHb0k84AeBxQ",
     "Dev Tools & Frameworks": "UL_kwDOAHb0k84AeBxR",
     "Education & Textbooks": "",
-    "Quantum Computing": ""
+    "Quantum Computing": "",
+    "Document Management": "",
+    "Decentralized & Blockchain": ""
   },
   "keywords": {
     "AI Agents & LLMs": [
@@ -36,7 +38,8 @@
       "diffusion",
       "chatbot",
       "foundation-model",
-      "financial-markets"
+      "financial-markets",
+      "rlm"
     ],
     "Tools & CLI": [
       "cli",
@@ -62,7 +65,9 @@
       "fisher",
       "esoteric-language",
       "opentofu",
-      "terraform"
+      "terraform",
+      "n8n",
+      "workflow"
     ],
     "Hardware & Keyboards": [
       "keyboard",
@@ -151,7 +156,16 @@
       "yarn",
       "npm",
       "hacktoberfest",
-      "infrastructure"
+      "infrastructure",
+      "ocr",
+      "document-management",
+      "dms",
+      "edms",
+      "cms",
+      "java",
+      "decentralized",
+      "social",
+      "network"
     ],
     "Education & Textbooks": [
       "textbook",
@@ -168,6 +182,20 @@
       "quantum-computing",
       "hiq",
       "distributed"
+    ],
+    "Document Management": [
+      "document-management",
+      "dms",
+      "logicaldoc",
+      "edms",
+      "cms"
+    ],
+    "Decentralized & Blockchain": [
+      "decentralized",
+      "blockchain",
+      "social",
+      "network",
+      "node"
     ]
   }
 }
