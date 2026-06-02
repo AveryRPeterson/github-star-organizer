@@ -36,7 +36,7 @@ def get_latest_uncategorized_issue():
 def get_issue_comments(issue_number):
     """Get comments from an issue (only from owner)"""
     try:
-        user = run_command(["gh", "api", "user", "--json", "login", "-q", ".login"])
+        user = run_command(["gh", "api", "user", "-q", ".login"])
         if not user:
             logger.error("Could not determine current user")
             return ""
