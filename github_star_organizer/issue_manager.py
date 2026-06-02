@@ -247,7 +247,7 @@ def create_discovery_issue(repo: dict, model_summaries: dict) -> str:
     desc = repo.get("description") or "No description"
     topics = ", ".join(
         [t["topic"]["name"] for t in repo.get("repositoryTopics", {}).get("nodes", [])]
-    )
+    ) or "None"
     repo_url = f"https://github.com/{name}"
     today = datetime.date.today().isoformat()
 
