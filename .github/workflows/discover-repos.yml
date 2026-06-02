@@ -2,7 +2,7 @@ name: Discover Repos
 
 on:
   schedule:
-    - cron: '0 23 * * 6'  # Saturday 11pm UTC (1 hour before distill.yml)
+    - cron: '0 23 * * 6'  # Saturday 11pm UTC
   workflow_dispatch:
 
 jobs:
@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       issues: write
-      contents: read
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -22,6 +22,20 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Restore state DB
+        uses: actions/cache/restore@v4
+        id: cache-restore
+        with:
+          path: state.db
+          key: github-star-state-v1-${{ github.run_id }}
+          restore-keys: github-star-state-v1-
+
+      - name: Recover DB from backup branch (cache miss)
+        if: steps.cache-restore.outputs.cache-hit != 'true'
+        run: |
+          git fetch origin state-backup 2>/dev/null && \
+          git checkout origin/state-backup -- state.db 2>/dev/null || true
+
       - name: Discover Repos
         id: discover_repos
         env:
@@ -29,6 +43,29 @@ jobs:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           OLLAMA_CLOUD_KEY: ${{ secrets.OLLAMA_CLOUD_KEY }}
         run: python discover_repos.py
+
+      - name: Save state DB to cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: state.db
+          key: github-star-state-v1-${{ github.run_id }}
+
+      - name: Backup DB to state-backup branch
+        run: |
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git fetch origin state-backup 2>/dev/null || true
+          if git ls-remote --exit-code origin state-backup 2>/dev/null; then
+            git checkout state-backup
+          else
+            git checkout --orphan state-backup
+            git rm -rf . 2>/dev/null || true
+          fi
+          cp ${{ github.workspace }}/state.db state.db 2>/dev/null || true
+          git add state.db
+          git diff --cached --quiet || git commit -m "Discovery state backup $(date -u +%Y-%m-%d)"
+          git push origin state-backup
 
       - name: Report Summary
         if: always()

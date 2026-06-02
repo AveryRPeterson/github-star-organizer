@@ -9,11 +9,12 @@ from github_star_organizer.categorizer import categorize
 from github_star_organizer.logger import get_logger
 from github_star_organizer.issue_manager import (
     get_or_create_weekly_issue,
-    get_or_create_weekly_discovery_issue,
-    get_already_reported_repos,
     report_uncategorized_repos,
+    create_discovery_issue,
+    augment_discovery_issue,
     IssueError,
 )
+from github_star_organizer import state_db
 
 
 logger = get_logger("find_weird")
@@ -575,82 +576,10 @@ def run_parallel_summaries(repos: list[dict]) -> dict[str, dict[str, dict]]:
     return results
 
 
-def format_discovery_comment(repos: list[dict], model_summaries: dict[str, dict[str, dict]]) -> str:
-    """
-    Format repositories as markdown comment with AI summaries from multiple models.
-
-    Args:
-        repos: List of repository dicts
-        model_summaries: Dict with keys 'deepseek' and/or 'ollama', each containing nameWithOwner -> {purpose, use_case, unusual_applications}
-
-    Returns:
-        Markdown string for GitHub issue comment
-    """
-    comment = f"### New Discovery Batch\n\n"
-
-    # Process DeepSeek results
-    if 'deepseek' in model_summaries and model_summaries['deepseek']:
-        deepseek_specs = get_model_specs("deepseek-chat")
-        comment += f"#### DeepSeek Analysis\n\n"
-        comment += f"**Model:** `deepseek-chat`\n"
-        if deepseek_specs:
-            if deepseek_specs.get('owned_by'):
-                comment += f"**Provider:** {deepseek_specs.get('owned_by')}\n"
-            if deepseek_specs.get('created'):
-                comment += f"**Created:** {deepseek_specs.get('created')}\n"
-        comment += "\n"
-
-        summaries = model_summaries['deepseek']
-        for repo in repos:
-            name = repo["nameWithOwner"]
-            if name in summaries:
-                desc = repo.get("description") or "No description"
-                topics = ", ".join([t["topic"]["name"] for t in repo.get("repositoryTopics", {}).get("nodes", [])])
-                repo_url = f"https://github.com/{name}"
-
-                comment += f"- **[{name}]({repo_url})**\n"
-                comment += f"  - **Description:** {desc}\n"
-                comment += f"  - **Topics:** {topics}\n"
-
-                summary = summaries[name]
-                comment += f"  - **Purpose:** {summary.get('purpose', 'N/A')}\n"
-                comment += f"  - **Suggested Use Case:** {summary.get('use_case', 'N/A')}\n"
-                comment += "  - **Unusual Applications:**\n"
-                for app in summary.get("unusual_applications", []):
-                    comment += f"    - {app}\n"
-                comment += "\n"
-
-    # Process Ollama results
-    if 'ollama' in model_summaries and model_summaries['ollama']:
-        comment += f"#### Ollama Cloud Analysis (Qwen3.5)\n\n"
-        comment += f"**Model:** `qwen3.5`\n"
-        comment += f"**Provider:** Ollama Cloud\n\n"
-
-        summaries = model_summaries['ollama']
-        for repo in repos:
-            name = repo["nameWithOwner"]
-            if name in summaries:
-                desc = repo.get("description") or "No description"
-                topics = ", ".join([t["topic"]["name"] for t in repo.get("repositoryTopics", {}).get("nodes", [])])
-                repo_url = f"https://github.com/{name}"
-
-                comment += f"- **[{name}]({repo_url})**\n"
-                comment += f"  - **Description:** {desc}\n"
-                comment += f"  - **Topics:** {topics}\n"
-
-                summary = summaries[name]
-                comment += f"  - **Purpose:** {summary.get('purpose', 'N/A')}\n"
-                comment += f"  - **Suggested Use Case:** {summary.get('use_case', 'N/A')}\n"
-                comment += "  - **Unusual Applications:**\n"
-                for app in summary.get("unusual_applications", []):
-                    comment += f"    - {app}\n"
-                comment += "\n"
-
-    return comment
-
 
 def main():
     try:
+        state_db.init_db()
         client = GitHubClient()
         logger.info("Searching for popular repositories...")
         data = search_popular_repos(client)
@@ -665,46 +594,22 @@ def main():
 
         # Stage 1: Identify uncategorized repos for keyword growth
         uncategorized = [r for r in all_repos if not is_categorized(r)]
-        if not uncategorized:
-            logger.info("No uncategorized popular repositories found")
-            if "GITHUB_OUTPUT" in os.environ:
-                with open(os.environ["GITHUB_OUTPUT"], "a") as f:
-                    date_suffix = datetime.date.today().strftime("%Y-W%V")
-                    f.write(f"repos_found=0\n")
-                    f.write(f"repos_reported=0\n")
-                    f.write(f"date_suffix={date_suffix}\n")
-            return
-
         logger.info(f"Found {len(uncategorized)} uncategorized repos (Stage 1: keyword growth)")
 
-        # Create or get weekly issues
-        uncategorized_issue_num = get_or_create_weekly_issue(client)
-        discovery_issue_num = get_or_create_weekly_discovery_issue(client)
-
-        if not uncategorized_issue_num or not discovery_issue_num:
-            logger.error("Failed to create/get weekly issues")
-            return
-
-        # Get already reported repos
-        already_uncategorized = get_already_reported_repos(client, uncategorized_issue_num)
-        already_discovered = get_already_reported_repos(client, discovery_issue_num)
-        
-        # Get current stars for deduplication (compute efficient: fetch once)
+        # Get current stars for deduplication (fetch once, reused throughout)
         current_stars = get_current_stars()
 
-        # Filter uncategorized to new ones only (Stage 1)
+        # Stage 1 dedup: use DB instead of parsing issue comments
+        already_uncategorized = state_db.get_uncategorized_repos()
         new_uncategorized = [
-            r
-            for r in uncategorized
+            r for r in uncategorized
             if r["nameWithOwner"] not in already_uncategorized
         ]
 
-        # Stage 2: Use all repos (including categorized) for interesting selection
-        # This gives models 100 repos to choose from instead of just 3
-        # ALSO filter out repos already starred by user (most compute efficient dedupe - O(1) lookup)
+        # Stage 2 dedup: use DB instead of searching discovery issue titles
+        already_discovered = state_db.get_discovered_repos()
         new_all_repos = [
-            r
-            for r in all_repos
+            r for r in all_repos
             if r["nameWithOwner"] not in already_discovered
             and r["nameWithOwner"] not in current_stars
         ]
@@ -712,39 +617,55 @@ def main():
         logger.info(f"Stage 1: {len(new_uncategorized)} new uncategorized repos for keywords")
         logger.info(f"Stage 2: {len(new_all_repos)} new repos available for interesting selection")
 
-        # Report uncategorized repos (Stage 1) for keyword growth
+        # Report uncategorized repos (Stage 1) — only create issue when there's something new
         if new_uncategorized:
-            report_uncategorized_repos(client, uncategorized_issue_num, new_uncategorized)
-            logger.info(f"Reported {len(new_uncategorized)} repos to uncategorized issue #{uncategorized_issue_num}")
+            issue_num = get_or_create_weekly_issue(client, create=False)
+            if not issue_num:
+                issue_num = get_or_create_weekly_issue(client, create=True)
+            if issue_num:
+                report_uncategorized_repos(client, issue_num, new_uncategorized)
+                state_db.insert_uncategorized_repos(new_uncategorized, issue_num)
+                logger.info(f"Reported {len(new_uncategorized)} repos to uncategorized issue #{issue_num}")
 
-        # Two-stage discovery: identify interesting repos, then summarize them (Stage 2 + 3)
-        # Pass current_stars so models know what to avoid
+        # Two-stage discovery: identify interesting repos, then summarize (Stage 2 + 3)
         result = identify_and_summarize_interesting(new_all_repos, current_stars=current_stars)
+        discovered_count = 0
 
         if result:
             selected_repos, model_summaries = result
             logger.info(f"Stage 2+3: Selected {len(selected_repos)} interesting repos for detailed analysis")
 
-            # Post to discovery issue
             if model_summaries:
-                comment = format_discovery_comment(selected_repos, model_summaries)
-                try:
-                    from github_star_organizer.issue_manager import run_command
-                    run_command(["gh", "issue", "comment", discovery_issue_num, "--body", comment])
-                    logger.info(f"Posted discovery summary to issue #{discovery_issue_num}")
-                except IssueError as e:
-                    logger.error(f"Failed to post discovery comment: {e}")
+                for repo in selected_repos:
+                    name = repo["nameWithOwner"]
+                    existing_issue_num = state_db.get_issue_number_for_discovered(name)
+                    if existing_issue_num:
+                        # Repo seen before — augment existing issue with any new model analyses
+                        for model_key, display in [("deepseek", "DeepSeek"), ("ollama", "Ollama")]:
+                            summary = model_summaries.get(model_key, {}).get(name)
+                            if summary:
+                                try:
+                                    augment_discovery_issue(existing_issue_num, display, summary)
+                                    logger.info(f"Augmented issue #{existing_issue_num} for {name}")
+                                except IssueError as e:
+                                    logger.warning(f"Failed to augment issue for {name}: {e}")
+                    else:
+                        try:
+                            new_issue_num = create_discovery_issue(repo, model_summaries)
+                            state_db.insert_discovered_repo(repo, model_summaries, new_issue_num)
+                            discovered_count += 1
+                            logger.info(f"Created discovery issue #{new_issue_num} for {name}")
+                        except IssueError as e:
+                            logger.error(f"Failed to create discovery issue for {name}: {e}")
             else:
-                logger.warning("Summary generation failed; discovery issue not updated")
+                logger.warning("Summary generation failed; no discovery issues created")
         else:
-            logger.warning("Repo identification failed; discovery issue not updated")
+            logger.warning("Repo identification failed; no discovery issues created")
 
         # Write GITHUB_OUTPUT
         if "GITHUB_OUTPUT" in os.environ:
             with open(os.environ["GITHUB_OUTPUT"], "a") as f:
                 date_suffix = datetime.date.today().strftime("%Y-W%V")
-                # repos_found = uncategorized repos found, repos_reported = discovered repos (stage 2+3)
-                discovered_count = len(selected_repos) if result else 0
                 f.write(f"repos_found={len(uncategorized)}\n")
                 f.write(f"repos_reported={len(new_uncategorized)}\n")
                 f.write(f"repos_discovered={discovered_count}\n")

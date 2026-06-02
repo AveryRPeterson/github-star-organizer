@@ -88,3 +88,6 @@ htmlcov/
 .idea/
 
 *.log
+
+# SQLite state DB (runtime artifact; persisted via GitHub Actions cache + state-backup branch)
+state.db

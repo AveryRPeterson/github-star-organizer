@@ -18,7 +18,7 @@ def run_command(cmd: list[str]) -> str:
     return result.stdout.strip()
 
 
-def get_or_create_weekly_issue(client) -> str | None:
+def get_or_create_weekly_issue(client, create: bool = True) -> str | None:
     """
     Get or create the weekly uncategorized stars tracking issue.
 
@@ -28,9 +28,10 @@ def get_or_create_weekly_issue(client) -> str | None:
 
     Args:
         client: GitHubClient instance
+        create: If False, return None when no issue exists rather than creating one
 
     Returns:
-        Issue number as string, or None if creation fails
+        Issue number as string, or None if creation fails or create=False and no issue exists
 
     Raises:
         IssueError: If issue operations fail
@@ -63,8 +64,10 @@ def get_or_create_weekly_issue(client) -> str | None:
             # Old issue from different week - close it
             old_issues.append(str(issue["number"]))
 
-    # 2. If target issue doesn't exist, create it
+    # 2. If target issue doesn't exist, create it (unless caller asked not to)
     if not target_issue_num:
+        if not create:
+            return None
         try:
             body = "This issue tracks repositories that were skipped during the organization run because they did not match any existing keywords. Comments below contain batches of uncategorized repositories."
             url = run_command(["gh", "issue", "create", "--title", target_title, "--body", body])
@@ -220,3 +223,96 @@ def get_or_create_weekly_discovery_issue(client) -> str | None:
             pass
 
     return target_issue_num
+
+
+def create_discovery_issue(repo: dict, model_summaries: dict) -> str:
+    """
+    Create a GitHub issue for a single discovered repository.
+
+    Issue title: "Discovered: owner/repo"
+    Body includes star link, metadata, and all available model analyses.
+
+    Args:
+        repo: Repository dict with nameWithOwner, description, repositoryTopics
+        model_summaries: Dict with keys 'deepseek' and/or 'ollama', each mapping
+                         nameWithOwner -> {purpose, use_case, unusual_applications}
+
+    Returns:
+        Created issue number as string
+
+    Raises:
+        IssueError: If issue creation fails
+    """
+    name = repo["nameWithOwner"]
+    desc = repo.get("description") or "No description"
+    topics = ", ".join(
+        [t["topic"]["name"] for t in repo.get("repositoryTopics", {}).get("nodes", [])]
+    )
+    repo_url = f"https://github.com/{name}"
+    today = datetime.date.today().isoformat()
+
+    body = f"## {name}\n\n"
+    body += f"**[⭐ View & Star on GitHub]({repo_url})**\n\n"
+    body += f"**Description:** {desc}\n"
+    body += f"**Topics:** {topics}\n\n"
+    body += "---\n\n"
+
+    ds_summaries = model_summaries.get("deepseek", {})
+    ol_summaries = model_summaries.get("ollama", {})
+
+    if name in ds_summaries:
+        s = ds_summaries[name]
+        body += "## DeepSeek Analysis\n\n"
+        body += f"**Purpose:** {s.get('purpose', 'N/A')}\n\n"
+        body += f"**Suggested Use Case:** {s.get('use_case', 'N/A')}\n\n"
+        body += "**Unusual Applications:**\n"
+        for app in s.get("unusual_applications", []):
+            body += f"- {app}\n"
+        body += "\n"
+
+    if name in ol_summaries:
+        s = ol_summaries[name]
+        body += "## Ollama Analysis\n\n"
+        body += f"**Purpose:** {s.get('purpose', 'N/A')}\n\n"
+        body += f"**Suggested Use Case:** {s.get('use_case', 'N/A')}\n\n"
+        body += "**Unusual Applications:**\n"
+        for app in s.get("unusual_applications", []):
+            body += f"- {app}\n"
+        body += "\n"
+
+    body += f"---\n*Discovered on {today}*\n"
+
+    try:
+        url = run_command(["gh", "issue", "create",
+                           "--title", f"Discovered: {name}",
+                           "--body", body])
+        return url.split("/")[-1]
+    except IssueError as e:
+        raise IssueError(f"Failed to create discovery issue for {name}: {e}")
+
+
+def augment_discovery_issue(issue_number: str, model_name: str, summary: dict) -> None:
+    """
+    Add a comment to an existing discovery issue with additional model analysis.
+
+    Used when a repo is re-surfaced in a future run and an issue already exists.
+
+    Args:
+        issue_number: Existing GitHub issue number
+        model_name: Display name for the model (e.g. "DeepSeek", "Ollama")
+        summary: Dict with purpose, use_case, unusual_applications keys
+
+    Raises:
+        IssueError: If comment posting fails
+    """
+    comment = f"### Additional Analysis — {model_name}\n\n"
+    comment += f"**Purpose:** {summary.get('purpose', 'N/A')}\n\n"
+    comment += f"**Suggested Use Case:** {summary.get('use_case', 'N/A')}\n\n"
+    comment += "**Unusual Applications:**\n"
+    for app in summary.get("unusual_applications", []):
+        comment += f"- {app}\n"
+
+    try:
+        run_command(["gh", "issue", "comment", issue_number, "--body", comment])
+    except IssueError as e:
+        raise IssueError(f"Failed to augment issue #{issue_number}: {e}")
