@@ -123,9 +123,14 @@ def search_popular_repos(client):
             id
             nameWithOwner
             description
-            repositoryTopics(first: 10) {
-              nodes { topic { name } }
+            primaryLanguage { name }
+            languages(first: 5, orderBy: {field: SIZE, direction: DESC}) {
+              edges { size node { name } }
+              totalSize
             }
+            licenseInfo { name }
+            updatedAt
+            homepageUrl
           }
         }
       }
@@ -159,9 +164,9 @@ def identify_interesting_repos(repos: list[dict], model: str = "deepseek", curre
     # Build compact repo list
     repo_list_str = ""
     for i, repo in enumerate(repos, 1):
-        topics = ", ".join([t["topic"]["name"] for t in repo.get("repositoryTopics", {}).get("nodes", [])])
+        lang = (repo.get("primaryLanguage") or {}).get("name") or "Unknown"
         desc = repo.get("description") or "No description"
-        repo_list_str += f"{i}. {repo['nameWithOwner']} | {desc} | topics: {topics}\n"
+        repo_list_str += f"{i}. {repo['nameWithOwner']} | {desc} | language: {lang}\n"
 
     # Add info about already starred repos to the prompt
     starred_note = ""
@@ -304,9 +309,9 @@ def call_deepseek_summaries(repos: list[dict]) -> dict[str, dict] | None:
     # Build compact repo list
     repo_list_str = ""
     for i, repo in enumerate(repos, 1):
-        topics = ", ".join([t["topic"]["name"] for t in repo.get("repositoryTopics", {}).get("nodes", [])])
+        lang = (repo.get("primaryLanguage") or {}).get("name") or "Unknown"
         desc = repo.get("description") or "No description"
-        repo_list_str += f"{i}. {repo['nameWithOwner']} | {desc} | topics: {topics}\n"
+        repo_list_str += f"{i}. {repo['nameWithOwner']} | {desc} | language: {lang}\n"
 
     user_prompt = f"""Analyze these uncategorized GitHub repositories and generate structured summaries.
 For each repo, provide:
@@ -395,9 +400,9 @@ def call_ollama_summaries(repos: list[dict]) -> dict[str, dict] | None:
 
     repo_list_str = ""
     for i, repo in enumerate(repos, 1):
-        topics = ", ".join([t["topic"]["name"] for t in repo.get("repositoryTopics", {}).get("nodes", [])])
+        lang = (repo.get("primaryLanguage") or {}).get("name") or "Unknown"
         desc = repo.get("description") or "No description"
-        repo_list_str += f"{i}. {repo['nameWithOwner']} | {desc} | topics: {topics}\n"
+        repo_list_str += f"{i}. {repo['nameWithOwner']} | {desc} | language: {lang}\n"
 
     user_prompt = f"""Analyze these uncategorized GitHub repositories and generate structured summaries.
 For each repo, provide:

@@ -245,16 +245,38 @@ def create_discovery_issue(repo: dict, model_summaries: dict) -> str:
     """
     name = repo["nameWithOwner"]
     desc = repo.get("description") or "No description"
-    topics = ", ".join(
-        [t["topic"]["name"] for t in repo.get("repositoryTopics", {}).get("nodes", [])]
-    ) or "None"
     repo_url = f"https://github.com/{name}"
     today = datetime.date.today().isoformat()
+
+    # Language ratio: "Python 78%, JavaScript 14%, Shell 8%"
+    primary_lang = (repo.get("primaryLanguage") or {}).get("name")
+    lang_edges = repo.get("languages", {}).get("edges", [])
+    total_size = repo.get("languages", {}).get("totalSize") or 0
+    if lang_edges and total_size:
+        lang_ratio = ", ".join(
+            f"{e['node']['name']} {round(e['size'] / total_size * 100)}%"
+            for e in lang_edges
+        )
+    elif primary_lang:
+        lang_ratio = primary_lang
+    else:
+        lang_ratio = None
+
+    license_name = (repo.get("licenseInfo") or {}).get("name")
+    updated_at = (repo.get("updatedAt") or "")[:10]  # YYYY-MM-DD
+    homepage = repo.get("homepageUrl") or None
 
     body = f"## {name}\n\n"
     body += f"**[⭐ View & Star on GitHub]({repo_url})**\n\n"
     body += f"**Description:** {desc}\n"
-    body += f"**Topics:** {topics}\n\n"
+    if lang_ratio:
+        body += f"**Language:** {lang_ratio}\n"
+    if license_name:
+        body += f"**License:** {license_name}\n"
+    body += f"**Last Updated:** {updated_at}\n"
+    if homepage:
+        body += f"**Homepage:** {homepage}\n"
+    body += "\n"
     body += "---\n\n"
 
     ds_summaries = model_summaries.get("deepseek", {})
