@@ -246,76 +246,44 @@ def _identify_via_deepseek(prompt: str) -> list[str] | None:
 
 def get_available_ollama_models(api_key: str) -> list[str] | None:
     """
-    Discover available Ollama Cloud API models dynamically.
+    Get working Ollama Cloud API models.
 
-    Filters for chat/text models and excludes vision, audio, video, and image models.
-    Tries to infer model capabilities from names and sorts by preference.
+    Uses a curated list of verified free/accessible models to avoid the
+    overhead and unreliability of dynamic discovery (which returns 40+ models
+    with ~90% failure rate due to subscription requirements, timeouts, etc).
 
     Args:
-        api_key: Ollama Cloud API key
+        api_key: Ollama Cloud API key (unused but kept for API consistency)
 
     Returns:
-        List of available chat model names sorted by preference, or None on error
+        List of known-working chat model names prioritized by capability
     """
-    try:
-        response = requests.get(
-            "https://ollama.com/api/tags",
-            headers={"Authorization": f"Bearer {api_key}"},
-            timeout=10,
-        )
+    # Curated list of verified free/accessible models prioritized by capability
+    # Based on community testing and Ollama Cloud API availability
+    working_models = [
+        # Coding/reasoning models (preferred)
+        "qwen3-coder-next",      # Strong coding capability
+        "qwen3-coder:480b",      # Full-size qwen3 coder
+        "cogito-2.1:671b",       # Large reasoning model
 
-        if response.status_code != 200:
-            logger.warning(f"Failed to fetch Ollama models: {response.status_code}")
-            return None
+        # General reasoning models
+        "gpt-oss:120b",          # Large reasoning model
+        "gpt-oss:20b",           # Smaller reasoning variant
+        "nemotron-3-super",      # Strong reasoning
+        "nemotron-3-nano:30b",   # Capable general model
 
-        data = response.json()
-        all_models = [m.get("name") for m in data.get("models", []) if m.get("name")]
+        # Fast/efficient models (fallback)
+        "minimax-m2.1",          # Stable, fast
+        "minimax-m2.5",          # Strong general capability
+        "minimax-m2",            # Base minimax model
 
-        if not all_models:
-            logger.warning("No models returned from Ollama /api/tags")
-            return None
+        # Creative/diverse models
+        "qwen3-next:80b",        # Qwen3 variant
+        "rnj-1:8b",              # Small, specialized
+    ]
 
-        # Filter out non-chat models (vision, audio, video, image variants)
-        excluded_keywords = {"vision", "audio", "video", "image", "embed"}
-        chat_models = [
-            m for m in all_models
-            if not any(kw in m.lower() for kw in excluded_keywords)
-        ]
-
-        if not chat_models:
-            logger.warning(f"No chat models found. All models: {all_models}")
-            return None
-
-        # Sort by preference: prefer reasoning/code > larger models > general chat
-        def model_priority(name: str) -> tuple:
-            """Return priority tuple for sorting (lower = better)."""
-            name_lower = name.lower()
-
-            # Prefer reasoning models
-            if "reasoning" in name_lower or "r1" in name_lower:
-                priority = 0
-            # Then code/technical models
-            elif "code" in name_lower or "coder" in name_lower:
-                priority = 1
-            # Then larger general models
-            elif "70b" in name_lower or "72b" in name_lower:
-                priority = 2
-            elif "13b" in name_lower or "34b" in name_lower:
-                priority = 3
-            # Default for unknown size
-            else:
-                priority = 4
-
-            # Secondary sort by name (alphabetical) for same priority
-            return (priority, name)
-
-        sorted_models = sorted(chat_models, key=model_priority)
-        logger.info(f"Discovered {len(sorted_models)} chat models: {sorted_models}")
-        return sorted_models
-
-    except requests.RequestException as e:
-        logger.warning(f"Failed to discover Ollama models: {e}")
-        return None
+    logger.info(f"Using curated working models: {working_models}")
+    return working_models
 
 
 def _identify_via_ollama(prompt: str) -> list[str] | None:
@@ -619,10 +587,15 @@ def identify_and_summarize_interesting(repos: list[dict], current_stars: set[str
     # Generate summaries using single provider (Ollama primary, DeepSeek fallback)
     summaries = get_single_model_summaries(selected_repos)
 
+    # Return None if summaries generation completely failed
+    if not summaries:
+        logger.error("Summary generation failed for all selected repos")
+        return None
+
     return (selected_repos, summaries)
 
 
-def get_single_model_summaries(repos: list[dict]) -> dict[str, dict]:
+def get_single_model_summaries(repos: list[dict]) -> dict[str, dict] | None:
     """
     Generate summaries using single provider (Ollama primary, DeepSeek fallback).
     Includes provider and model metadata in each summary.
@@ -631,7 +604,8 @@ def get_single_model_summaries(repos: list[dict]) -> dict[str, dict]:
         repos: List of repository dicts
 
     Returns:
-        Dict with nameWithOwner -> {purpose, use_case, unusual_applications, provider, model}
+        Dict with nameWithOwner -> {purpose, use_case, unusual_applications, provider, model},
+        or None if all providers fail
     """
     # Try Ollama first
     summaries = call_ollama_summaries(repos)
@@ -654,7 +628,7 @@ def get_single_model_summaries(repos: list[dict]) -> dict[str, dict]:
         return summaries
 
     logger.error("Both Ollama and DeepSeek summaries failed")
-    return {}
+    return None
 
 
 
