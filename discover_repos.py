@@ -247,9 +247,9 @@ def _identify_via_deepseek(prompt: str) -> list[str] | None:
 
 def _identify_via_ollama(prompt: str) -> list[str] | None:
     """Call Ollama to identify interesting repos with 3-tier fallback to DeepSeek"""
-    api_key = os.getenv("OLLAMA_CLOUD_KEY")
+    api_key = os.getenv("OLLAMA_API_KEY")
     if not api_key:
-        logger.warning("OLLAMA_CLOUD_KEY not set, falling back to DeepSeek")
+        logger.warning("OLLAMA_API_KEY not set, falling back to DeepSeek")
         return _identify_via_deepseek(prompt)
 
     # Try 3 tiers of Ollama models before falling back to DeepSeek
@@ -259,7 +259,7 @@ def _identify_via_ollama(prompt: str) -> list[str] | None:
         try:
             logger.info(f"Trying Ollama with model: {model}")
             response = requests.post(
-                "https://api.ollama.com/v1/chat/completions",
+                "https://ollama.com/api/chat",
                 headers={
                     "Authorization": f"Bearer {api_key}",
                     "Content-Type": "application/json",
@@ -280,7 +280,7 @@ def _identify_via_ollama(prompt: str) -> list[str] | None:
 
             if response.status_code == 200:
                 result = response.json()
-                content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
+                content = result.get("message", {}).get("content", "")
                 if content:
                     try:
                         parsed = json.loads(content)
@@ -404,9 +404,9 @@ def call_ollama_summaries(repos: list[dict]) -> dict[str, dict] | None:
     Returns:
         Dict keyed by nameWithOwner with {purpose, use_case, unusual_applications}, or None on error
     """
-    api_key = os.getenv("OLLAMA_CLOUD_KEY")
+    api_key = os.getenv("OLLAMA_API_KEY")
     if not api_key:
-        logger.warning("OLLAMA_CLOUD_KEY not set, falling back to DeepSeek")
+        logger.warning("OLLAMA_API_KEY not set, falling back to DeepSeek")
         return call_deepseek_summaries(repos)
 
     repo_list_str = ""
@@ -443,7 +443,7 @@ Repositories to analyze:
         try:
             logger.info(f"Trying Ollama with model: {model}")
             response = requests.post(
-                "https://api.ollama.com/v1/chat/completions",
+                "https://ollama.com/api/chat",
                 headers={
                     "Authorization": f"Bearer {api_key}",
                     "Content-Type": "application/json",
@@ -464,7 +464,7 @@ Repositories to analyze:
 
             if response.status_code == 200:
                 result = response.json()
-                content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
+                content = result.get("message", {}).get("content", "")
                 if content:
                     try:
                         parsed = json.loads(content)
