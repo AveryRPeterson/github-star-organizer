@@ -492,17 +492,18 @@ Repositories to analyze:
     return call_deepseek_summaries(repos)
 
 
-def identify_and_summarize_interesting(repos: list[dict], current_stars: set[str] | None = None) -> tuple[list[dict], dict[str, dict[str, dict]]] | None:
+def identify_and_summarize_interesting(repos: list[dict], current_stars: set[str] | None = None, total: int = 13) -> tuple[list[dict], dict[str, dict[str, dict]]] | None:
     """
     Two-stage discovery: identify interesting repos, then generate summaries.
 
-    1. Split repos in half: first half to DeepSeek (identifies 7), second half to Ollama (identifies 6)
-    2. Consolidate and deduplicate (13 total unique, no overlap since halves are disjoint)
+    1. Split repos in half: first half to DeepSeek, second half to Ollama
+    2. Consolidate and deduplicate
     3. Generate detailed summaries for selected repos
 
     Args:
         repos: List of uncategorized repository dicts
         current_stars: Set of repos already starred by user (to include in prompt)
+        total: Total number of repos to discover (split between DeepSeek and Ollama)
 
     Returns:
         Tuple of (selected_repos_list, model_summaries_dict) or None on error
@@ -519,9 +520,12 @@ def identify_and_summarize_interesting(repos: list[dict], current_stars: set[str
     logger.info(f"Ollama analyzing {len(ollama_repos)} repos (second half)")
 
     # Identify interesting repos from each half (pass starred repos to avoid)
-    # 7 + 6 = 13 total; halves are disjoint so no duplicates after consolidation
-    deepseek_interesting = identify_interesting_repos(deepseek_repos, model="deepseek", current_stars=current_stars, count=7)
-    ollama_interesting = identify_interesting_repos(ollama_repos, model="ollama", current_stars=current_stars, count=6)
+    # Split total count: DeepSeek gets ceiling half, Ollama gets floor half
+    total_count = total
+    ds_count = (total_count + 1) // 2
+    ol_count = total_count // 2
+    deepseek_interesting = identify_interesting_repos(deepseek_repos, model="deepseek", current_stars=current_stars, count=ds_count)
+    ollama_interesting = identify_interesting_repos(ollama_repos, model="ollama", current_stars=current_stars, count=ol_count)
 
     # Consolidate results
     interesting_names = set()
@@ -650,7 +654,8 @@ def main():
                 logger.info(f"Reported {len(new_uncategorized)} repos to uncategorized issue #{issue_num}")
 
         # Two-stage discovery: identify interesting repos, then summarize (Stage 2 + 3)
-        result = identify_and_summarize_interesting(new_all_repos, current_stars=current_stars)
+        discovery_count = int(os.environ.get("DISCOVERY_COUNT", "13"))
+        result = identify_and_summarize_interesting(new_all_repos, current_stars=current_stars, total=discovery_count)
         discovered_count = 0
 
         if result:
