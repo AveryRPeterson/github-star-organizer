@@ -245,17 +245,94 @@ def _identify_via_deepseek(prompt: str) -> list[str] | None:
         return None
 
 
+def get_available_ollama_models(api_key: str) -> list[str] | None:
+    """
+    Discover available Ollama Cloud API models dynamically.
+
+    Filters for chat/text models and excludes vision, audio, video, and image models.
+    Tries to infer model capabilities from names and sorts by preference.
+
+    Args:
+        api_key: Ollama Cloud API key
+
+    Returns:
+        List of available chat model names sorted by preference, or None on error
+    """
+    try:
+        response = requests.get(
+            "https://ollama.com/api/tags",
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=10,
+        )
+
+        if response.status_code != 200:
+            logger.warning(f"Failed to fetch Ollama models: {response.status_code}")
+            return None
+
+        data = response.json()
+        all_models = [m.get("name") for m in data.get("models", []) if m.get("name")]
+
+        if not all_models:
+            logger.warning("No models returned from Ollama /api/tags")
+            return None
+
+        # Filter out non-chat models (vision, audio, video, image variants)
+        excluded_keywords = {"vision", "audio", "video", "image", "embed"}
+        chat_models = [
+            m for m in all_models
+            if not any(kw in m.lower() for kw in excluded_keywords)
+        ]
+
+        if not chat_models:
+            logger.warning(f"No chat models found. All models: {all_models}")
+            return None
+
+        # Sort by preference: prefer reasoning/code > larger models > general chat
+        def model_priority(name: str) -> tuple:
+            """Return priority tuple for sorting (lower = better)."""
+            name_lower = name.lower()
+
+            # Prefer reasoning models
+            if "reasoning" in name_lower or "r1" in name_lower:
+                priority = 0
+            # Then code/technical models
+            elif "code" in name_lower or "coder" in name_lower:
+                priority = 1
+            # Then larger general models
+            elif "70b" in name_lower or "72b" in name_lower:
+                priority = 2
+            elif "13b" in name_lower or "34b" in name_lower:
+                priority = 3
+            # Default for unknown size
+            else:
+                priority = 4
+
+            # Secondary sort by name (alphabetical) for same priority
+            return (priority, name)
+
+        sorted_models = sorted(chat_models, key=model_priority)
+        logger.info(f"Discovered {len(sorted_models)} chat models: {sorted_models}")
+        return sorted_models
+
+    except requests.RequestException as e:
+        logger.warning(f"Failed to discover Ollama models: {e}")
+        return None
+
+
 def _identify_via_ollama(prompt: str) -> list[str] | None:
-    """Call Ollama to identify interesting repos with 3-tier fallback to DeepSeek"""
+    """Call Ollama to identify interesting repos with dynamic model discovery and fallback to DeepSeek"""
     api_key = os.getenv("OLLAMA_API_KEY")
     if not api_key:
         logger.warning("OLLAMA_API_KEY not set, falling back to DeepSeek")
         return _identify_via_deepseek(prompt)
 
-    # Try 3 tiers of Ollama models before falling back to DeepSeek
-    ollama_models = ["dolphin-mixtral", "neural-chat", "mistral"]
+    # Dynamically discover available models
+    available_models = get_available_ollama_models(api_key)
+    if not available_models:
+        logger.warning("No available Ollama models, falling back to DeepSeek")
+        return _identify_via_deepseek(prompt)
 
-    for model in ollama_models:
+    for model in available_models:
         try:
             logger.info(f"Trying Ollama with model: {model}")
             response = requests.post(
@@ -297,7 +374,7 @@ def _identify_via_ollama(prompt: str) -> list[str] | None:
             logger.warning(f"Ollama {model} request failed: {e}")
             continue
 
-    # All Ollama tiers failed, fall back to DeepSeek
+    # All Ollama models exhausted, fall back to DeepSeek
     logger.warning("All Ollama models exhausted, falling back to DeepSeek")
     return _identify_via_deepseek(prompt)
 
@@ -436,10 +513,13 @@ Return ONLY valid JSON with this structure:
 Repositories to analyze:
 {repo_list_str}"""
 
-    # Try 3 tiers of Ollama models before falling back to DeepSeek
-    ollama_models = ["dolphin-mixtral", "neural-chat", "mistral"]
+    # Dynamically discover available models
+    available_models = get_available_ollama_models(api_key)
+    if not available_models:
+        logger.warning("No available Ollama models, falling back to DeepSeek")
+        return call_deepseek_summaries(repos)
 
-    for model in ollama_models:
+    for model in available_models:
         try:
             logger.info(f"Trying Ollama with model: {model}")
             response = requests.post(
