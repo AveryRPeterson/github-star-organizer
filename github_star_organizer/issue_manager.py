@@ -279,28 +279,20 @@ def create_discovery_issue(repo: dict, model_summaries: dict) -> str:
     body += "\n"
     body += "---\n\n"
 
-    ds_summaries = model_summaries.get("deepseek", {})
-    ol_summaries = model_summaries.get("ollama", {})
-
-    if name in ds_summaries:
-        s = ds_summaries[name]
-        body += "## DeepSeek Analysis\n\n"
+    # Get analysis for this repo (flat dict format: nameWithOwner -> {purpose, use_case, unusual_applications, provider, model})
+    if name in model_summaries:
+        s = model_summaries[name]
+        body += "## Analysis\n\n"
         body += f"**Purpose:** {s.get('purpose', 'N/A')}\n\n"
         body += f"**Suggested Use Case:** {s.get('use_case', 'N/A')}\n\n"
         body += "**Unusual Applications:**\n"
         for app in s.get("unusual_applications", []):
             body += f"- {app}\n"
         body += "\n"
-
-    if name in ol_summaries:
-        s = ol_summaries[name]
-        body += "## Ollama Analysis\n\n"
-        body += f"**Purpose:** {s.get('purpose', 'N/A')}\n\n"
-        body += f"**Suggested Use Case:** {s.get('use_case', 'N/A')}\n\n"
-        body += "**Unusual Applications:**\n"
-        for app in s.get("unusual_applications", []):
-            body += f"- {app}\n"
-        body += "\n"
+        # Include provider and model at the end
+        provider = s.get('provider', 'Unknown')
+        model = s.get('model', 'Unknown')
+        body += f"*Analysis provided by {provider} ({model})*\n\n"
 
     body += f"---\n*Discovered on {today}*\n"
 

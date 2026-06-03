@@ -3,7 +3,6 @@ import json
 import sys
 import datetime
 import requests
-import threading
 from github_star_organizer.gh_client import GitHubClient, GitHubAPIError
 from github_star_organizer.categorizer import categorize
 from github_star_organizer.logger import get_logger
@@ -578,123 +577,84 @@ Repositories to analyze:
     return call_deepseek_summaries(repos)
 
 
-def identify_and_summarize_interesting(repos: list[dict], current_stars: set[str] | None = None, total: int = 13) -> tuple[list[dict], dict[str, dict[str, dict]]] | None:
+def identify_and_summarize_interesting(repos: list[dict], current_stars: set[str] | None = None, total: int = 13) -> tuple[list[dict], dict[str, dict]] | None:
     """
-    Two-stage discovery: identify interesting repos, then generate summaries.
+    Two-stage discovery: identify interesting repos, then generate single summaries (Ollama primary, DeepSeek fallback).
 
-    1. Split repos in half: first half to DeepSeek, second half to Ollama
-    2. Consolidate and deduplicate
-    3. Generate detailed summaries for selected repos
+    1. Identify top N unique repos using one model (Ollama with fallback)
+    2. Generate detailed summaries for selected repos with the same provider
+    3. Include provider/model metadata in each summary
 
     Args:
         repos: List of uncategorized repository dicts
         current_stars: Set of repos already starred by user (to include in prompt)
-        total: Total number of repos to discover (split between DeepSeek and Ollama)
+        total: Total number of repos to discover
 
     Returns:
-        Tuple of (selected_repos_list, model_summaries_dict) or None on error
+        Tuple of (selected_repos_list, summaries_dict) where summaries_dict is
+        {nameWithOwner: {purpose, use_case, unusual_applications, provider, model}} or None on error
     """
     if not repos:
         return None
 
-    # Split list in half: first half to DeepSeek, second half to Ollama
-    mid = len(repos) // 2
-    deepseek_repos = repos[:mid]
-    ollama_repos = repos[mid:]
+    logger.info(f"Identifying {total} interesting repos from {len(repos)} candidates")
 
-    logger.info(f"DeepSeek analyzing {len(deepseek_repos)} repos (first half)")
-    logger.info(f"Ollama analyzing {len(ollama_repos)} repos (second half)")
-
-    # Identify interesting repos from each half (pass starred repos to avoid)
-    # Split total count: DeepSeek gets ceiling half, Ollama gets floor half
-    total_count = total
-    ds_count = (total_count + 1) // 2
-    ol_count = total_count // 2
-    deepseek_interesting = identify_interesting_repos(deepseek_repos, model="deepseek", current_stars=current_stars, count=ds_count)
-    ollama_interesting = (
-        identify_interesting_repos(ollama_repos, model="ollama", current_stars=current_stars, count=ol_count)
-        if ol_count > 0 else None
-    )
-
-    # Consolidate results — preserve insertion order (DeepSeek first) then trim to total
-    interesting_names: list[str] = []
-    seen: set[str] = set()
-    for name in (deepseek_interesting or []) + (ollama_interesting or []):
-        if name not in seen:
-            seen.add(name)
-            interesting_names.append(name)
-    interesting_names = interesting_names[:total_count]
-
-    if deepseek_interesting:
-        logger.info(f"DeepSeek identified: {deepseek_interesting}")
-    if ollama_interesting:
-        logger.info(f"Ollama identified: {ollama_interesting}")
+    # Identify interesting repos using single provider (Ollama primary, DeepSeek fallback)
+    interesting_names = identify_interesting_repos(repos, model="ollama", current_stars=current_stars, count=total)
+    if not interesting_names:
+        logger.warning("Ollama identification failed, trying DeepSeek")
+        interesting_names = identify_interesting_repos(repos, model="deepseek", current_stars=current_stars, count=total)
 
     if not interesting_names:
-        logger.warning("No interesting repos identified by either model")
+        logger.warning("No interesting repos identified")
         return None
 
-    logger.info(f"Consolidated {len(interesting_names)} unique interesting repos (capped at {total_count})")
+    logger.info(f"Identified {len(interesting_names)} interesting repos: {interesting_names}")
 
-    # Filter original repos to only selected ones (capped set, preserve discovery order)
+    # Filter to selected repos (in original order)
     selected_set = set(interesting_names)
     selected_repos = [r for r in repos if r["nameWithOwner"] in selected_set]
     logger.info(f"Selected {len(selected_repos)} repos for detailed analysis")
 
-    # Generate summaries for selected repos
-    summaries = run_parallel_summaries(selected_repos)
+    # Generate summaries using single provider (Ollama primary, DeepSeek fallback)
+    summaries = get_single_model_summaries(selected_repos)
 
     return (selected_repos, summaries)
 
 
-def run_parallel_summaries(repos: list[dict]) -> dict[str, dict[str, dict]]:
+def get_single_model_summaries(repos: list[dict]) -> dict[str, dict]:
     """
-    Run DeepSeek and Ollama summaries in parallel.
+    Generate summaries using single provider (Ollama primary, DeepSeek fallback).
+    Includes provider and model metadata in each summary.
 
     Args:
         repos: List of repository dicts
 
     Returns:
-        Dict with keys 'deepseek' and 'ollama', each containing nameWithOwner -> {purpose, use_case, unusual_applications}
+        Dict with nameWithOwner -> {purpose, use_case, unusual_applications, provider, model}
     """
-    results = {}
-    errors = []
+    # Try Ollama first
+    summaries = call_ollama_summaries(repos)
+    if summaries:
+        # Add provider/model metadata to each summary
+        for repo_name, summary in summaries.items():
+            summary["provider"] = "Ollama"
+            summary["model"] = "auto-selected"  # User will see actual model in logs
+        logger.info("Using Ollama for summaries")
+        return summaries
 
-    def call_deepseek():
-        try:
-            summaries = call_deepseek_summaries(repos)
-            if summaries:
-                results['deepseek'] = summaries
-            else:
-                errors.append("DeepSeek")
-        except Exception as e:
-            logger.warning(f"DeepSeek thread error: {e}")
-            errors.append("DeepSeek")
+    # Fallback to DeepSeek
+    logger.warning("Ollama summaries failed, falling back to DeepSeek")
+    summaries = call_deepseek_summaries(repos)
+    if summaries:
+        for repo_name, summary in summaries.items():
+            summary["provider"] = "DeepSeek"
+            summary["model"] = "deepseek-chat"
+        logger.info("Using DeepSeek for summaries")
+        return summaries
 
-    def call_ollama():
-        try:
-            summaries = call_ollama_summaries(repos)
-            if summaries:
-                results['ollama'] = summaries
-            else:
-                logger.warning("Ollama returned no summaries")
-        except Exception as e:
-            logger.warning(f"Ollama thread error: {e}")
-
-    # Run both in parallel
-    deepseek_thread = threading.Thread(target=call_deepseek)
-    ollama_thread = threading.Thread(target=call_ollama)
-
-    deepseek_thread.start()
-    ollama_thread.start()
-
-    deepseek_thread.join()
-    ollama_thread.join()
-
-    if errors:
-        logger.warning(f"Failed models: {', '.join(errors)}")
-
-    return results
+    logger.error("Both Ollama and DeepSeek summaries failed")
+    return {}
 
 
 
