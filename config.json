@@ -39,7 +39,8 @@
       "chatbot",
       "foundation-model",
       "financial-markets",
-      "rlm"
+      "rlm",
+      "model-context-protocol"
     ],
     "Tools & CLI": [
       "cli",

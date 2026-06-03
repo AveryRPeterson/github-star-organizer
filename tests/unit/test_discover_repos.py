@@ -155,7 +155,11 @@ class TestCreateDiscoveryIssue:
         repo = {
             "nameWithOwner": "owner/repo",
             "description": "A cool repo",
-            "repositoryTopics": {"nodes": [{"topic": {"name": "python"}}]},
+            "primaryLanguage": {"name": "Python"},
+            "languages": {"edges": [{"size": 8000, "node": {"name": "Python"}}, {"size": 2000, "node": {"name": "Shell"}}], "totalSize": 10000},
+            "licenseInfo": {"name": "MIT License"},
+            "updatedAt": "2026-05-15T10:00:00Z",
+            "homepageUrl": "https://example.com",
         }
         model_summaries = {
             "deepseek": {
@@ -176,10 +180,35 @@ class TestCreateDiscoveryIssue:
         body_idx = call_args.index("--body") + 1
         body = call_args[body_idx]
         assert "⭐ View & Star on GitHub" in body
-        assert "https://github.com/owner/repo" in body
+        assert "](https://github.com/owner/repo)" in body
+        assert "Python 80%" in body
+        assert "MIT License" in body
+        assert "2026-05-15" in body
+        assert "**Homepage:** https://example.com" in body
         assert "DeepSeek Analysis" in body
         assert "Test tool" in body
         assert "App1" in body
+
+    @patch("github_star_organizer.issue_manager.run_command")
+    def test_creates_issue_omits_missing_language_license_homepage(self, mock_run):
+        mock_run.return_value = "https://github.com/owner/repo/issues/99"
+        repo = {
+            "nameWithOwner": "owner/repo",
+            "description": "A repo with no extras",
+            "primaryLanguage": None,
+            "languages": {"edges": [], "totalSize": 0},
+            "licenseInfo": None,
+            "updatedAt": "2026-04-01T00:00:00Z",
+            "homepageUrl": None,
+        }
+
+        issue_manager.create_discovery_issue(repo, {})
+
+        body = mock_run.call_args[0][0][mock_run.call_args[0][0].index("--body") + 1]
+        assert "**Language:**" not in body
+        assert "**License:**" not in body
+        assert "**Homepage:**" not in body
+        assert "2026-04-01" in body
 
     @patch("github_star_organizer.issue_manager.run_command")
     def test_includes_both_model_sections_when_available(self, mock_run):
@@ -187,7 +216,11 @@ class TestCreateDiscoveryIssue:
         repo = {
             "nameWithOwner": "owner/repo",
             "description": "A cool repo",
-            "repositoryTopics": {"nodes": []},
+            "primaryLanguage": None,
+            "languages": {"edges": [], "totalSize": 0},
+            "licenseInfo": None,
+            "updatedAt": "2026-05-01T00:00:00Z",
+            "homepageUrl": None,
         }
         model_summaries = {
             "deepseek": {
@@ -220,7 +253,11 @@ class TestCreateDiscoveryIssue:
         repo = {
             "nameWithOwner": "owner/my-repo",
             "description": "desc",
-            "repositoryTopics": {"nodes": []},
+            "primaryLanguage": None,
+            "languages": {"edges": [], "totalSize": 0},
+            "licenseInfo": None,
+            "updatedAt": "2026-05-01T00:00:00Z",
+            "homepageUrl": None,
         }
         issue_manager.create_discovery_issue(repo, {})
 
