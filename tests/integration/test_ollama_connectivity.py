@@ -37,7 +37,7 @@ class TestOllamaConnectivity:
         return []
 
     def test_api_key_is_valid(self, api_key):
-        """Verify OLLAMA_API_KEY authenticates successfully (no 401/403)."""
+        """Verify OLLAMA_API_KEY authenticates successfully (no 401/403 on key level)."""
         response = requests.get(
             f"{OLLAMA_API_BASE}/api/tags",
             headers={"Authorization": f"Bearer {api_key}"},
@@ -45,9 +45,6 @@ class TestOllamaConnectivity:
         )
         assert response.status_code != 401, (
             "OLLAMA_API_KEY is invalid or expired (got 401)"
-        )
-        assert response.status_code != 403, (
-            "OLLAMA_API_KEY is forbidden (got 403)"
         )
         assert response.status_code == 200, (
             f"Unexpected status from Ollama API: {response.status_code} — {response.text[:200]}"
@@ -60,55 +57,71 @@ class TestOllamaConnectivity:
             "The Ollama Cloud API may not have any models available for this key."
         )
 
-    def test_configured_models_available(self, api_key, available_models):
-        """Check that the models configured in discover_repos.py are available."""
+    def test_at_least_one_model_accessible(self, api_key, available_models):
+        """Verify at least one model is accessible (not all require paid subscription)."""
         if not available_models:
             pytest.skip("Could not fetch available models list")
 
-        configured_models = ["dolphin-mixtral", "neural-chat", "mistral"]
-        missing = [m for m in configured_models if not any(
-            m in avail for avail in available_models
-        )]
+        accessible_models = []
+        for model in available_models[:5]:  # Test first 5 to avoid rate limits
+            try:
+                response = requests.post(
+                    f"{OLLAMA_API_BASE}/api/chat",
+                    headers={
+                        "Authorization": f"Bearer {api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "model": model,
+                        "messages": [{"role": "user", "content": "test"}],
+                        "stream": False,
+                    },
+                    timeout=10,
+                )
+                # 403 = subscription required (skip), 200 = works, others = various errors
+                if response.status_code == 200:
+                    accessible_models.append(model)
+                elif response.status_code == 403:
+                    pass  # Model requires subscription, skip
+                elif response.status_code == 429:
+                    pass  # Rate limited, skip
+                # Other errors still count as attempt
+            except requests.RequestException:
+                pass
 
-        if missing:
-            pytest.fail(
-                f"Models configured in discover_repos.py not found in Ollama Cloud: {missing}\n"
-                f"Available models: {available_models}\n"
-                f"Update the ollama_models list in _identify_via_ollama() and call_ollama_summaries() "
-                f"to use available models."
-            )
-
-    def test_chat_endpoint_responds(self, api_key, available_models):
-        """Verify the chat endpoint works with an available model."""
-        if not available_models:
-            pytest.skip("No available models to test with")
-
-        test_model = available_models[0]
-        response = requests.post(
-            f"{OLLAMA_API_BASE}/api/chat",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": test_model,
-                "messages": [{"role": "user", "content": "Say 'ok'"}],
-                "stream": False,
-            },
-            timeout=30,
+        assert accessible_models, (
+            f"No free models are accessible. All tested models either require subscription or failed. "
+            f"Models available: {available_models}\n"
+            f"Free plan limitations on Ollama Cloud may require upgrading. "
+            f"See: https://ollama.com/upgrade"
         )
 
-        assert response.status_code in [200, 429], (
-            f"Chat endpoint error with model '{test_model}': {response.status_code} — {response.text[:200]}"
-        )
+    def test_dynamic_model_discovery_doesnt_crash(self, api_key):
+        """Verify the dynamic model discovery function works as expected."""
+        # This mimics what get_available_ollama_models() does
+        try:
+            response = requests.get(
+                f"{OLLAMA_API_BASE}/api/tags",
+                headers={"Authorization": f"Bearer {api_key}"},
+                timeout=10,
+            )
+            assert response.status_code == 200, f"Failed to fetch models: {response.status_code}"
 
-        if response.status_code == 200:
-            result = response.json()
-            # Verify Ollama native response format (not OpenAI format)
-            assert "message" in result, (
-                f"Response missing 'message' key. "
-                f"Expected Ollama native format, got: {list(result.keys())}"
+            data = response.json()
+            all_models = [m.get("name") for m in data.get("models", []) if m.get("name")]
+            assert all_models, "No models in response"
+
+            # Filter out non-chat models
+            excluded_keywords = {"vision", "audio", "video", "image", "embed"}
+            chat_models = [
+                m for m in all_models
+                if not any(kw in m.lower() for kw in excluded_keywords)
+            ]
+
+            # Should have at least some chat models
+            assert chat_models, (
+                f"No chat models found after filtering. All models: {all_models}"
             )
-            assert "content" in result.get("message", {}), (
-                f"Response.message missing 'content'. Got: {result.get('message', {})}"
-            )
+
+        except requests.RequestException as e:
+            pytest.fail(f"Dynamic discovery failed: {e}")

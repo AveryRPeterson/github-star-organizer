@@ -368,6 +368,9 @@ def _identify_via_ollama(prompt: str) -> list[str] | None:
                     except json.JSONDecodeError:
                         logger.warning(f"Ollama {model} returned invalid JSON")
                         continue
+            elif response.status_code == 403:
+                logger.warning(f"Ollama {model} not accessible (subscription required or no access)")
+                continue
             else:
                 logger.warning(f"Ollama {model} API error: {response.status_code}")
         except requests.RequestException as e:
@@ -561,6 +564,9 @@ Repositories to analyze:
                     except json.JSONDecodeError:
                         logger.warning(f"Ollama {model} returned invalid JSON")
                         continue
+            elif response.status_code == 403:
+                logger.warning(f"Ollama {model} not accessible (subscription required or no access)")
+                continue
             else:
                 logger.warning(f"Ollama {model} API error: {response.status_code}")
         except requests.RequestException as e:
