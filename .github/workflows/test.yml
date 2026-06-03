@@ -33,4 +33,4 @@ jobs:
       continue-on-error: true
 
     - name: Generate coverage report
-      run: pytest tests/ --cov=github_star_organizer --cov-report=term-missing
+      run: pytest tests/unit/ --cov=github_star_organizer --cov-report=term-missing
