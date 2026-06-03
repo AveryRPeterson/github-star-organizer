@@ -180,11 +180,11 @@ class TestCreateDiscoveryIssue:
         body_idx = call_args.index("--body") + 1
         body = call_args[body_idx]
         assert "⭐ View & Star on GitHub" in body
-        assert "https://github.com/owner/repo" in body
+        assert "](https://github.com/owner/repo)" in body
         assert "Python 80%" in body
         assert "MIT License" in body
         assert "2026-05-15" in body
-        assert "https://example.com" in body
+        assert "**Homepage:** https://example.com" in body
         assert "DeepSeek Analysis" in body
         assert "Test tool" in body
         assert "App1" in body
