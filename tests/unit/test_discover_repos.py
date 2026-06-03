@@ -266,6 +266,75 @@ class TestCreateDiscoveryIssue:
         assert call_args[title_idx] == "Discovered: owner/my-repo"
 
 
+class TestIdentifyAndSummarizeInteresting:
+    def _make_repos(self, names):
+        return [
+            {
+                "nameWithOwner": n,
+                "description": "desc",
+                "repositoryTopics": {"nodes": []},
+                "primaryLanguage": None,
+                "languages": {"edges": [], "totalSize": 0},
+                "licenseInfo": None,
+                "updatedAt": "2026-01-01T00:00:00Z",
+                "homepageUrl": None,
+            }
+            for n in names
+        ]
+
+    @patch("discover_repos.run_parallel_summaries")
+    @patch("discover_repos.identify_interesting_repos")
+    def test_total_1_skips_ollama_and_caps_at_1(self, mock_identify, mock_summaries):
+        repos = self._make_repos([f"owner/repo{i}" for i in range(10)])
+        # DeepSeek returns 1, Ollama should not be called
+        mock_identify.return_value = ["owner/repo0"]
+        mock_summaries.return_value = {}
+
+        result = discover_repos.identify_and_summarize_interesting(repos, total=1)
+
+        assert result is not None
+        selected, _ = result
+        assert len(selected) == 1
+        # Ollama called with count=0 should be skipped — identify_interesting_repos called only once
+        calls = mock_identify.call_args_list
+        assert all(c.kwargs.get("count", c.args[3] if len(c.args) > 3 else 1) > 0 for c in calls), \
+            "identify_interesting_repos should not be called with count=0"
+
+    @patch("discover_repos.run_parallel_summaries")
+    @patch("discover_repos.identify_interesting_repos")
+    def test_models_returning_excess_are_capped(self, mock_identify, mock_summaries):
+        repos = self._make_repos([f"owner/repo{i}" for i in range(20)])
+        mock_identify.side_effect = [
+            ["owner/repo0", "owner/repo1", "owner/repo2"],  # DeepSeek returns 3
+            ["owner/repo3", "owner/repo4", "owner/repo5"],  # Ollama returns 3
+        ]
+        mock_summaries.return_value = {}
+
+        result = discover_repos.identify_and_summarize_interesting(repos, total=2)
+
+        assert result is not None
+        selected, _ = result
+        assert len(selected) == 2
+
+    @patch("discover_repos.run_parallel_summaries")
+    @patch("discover_repos.identify_interesting_repos")
+    def test_deduplication_across_models(self, mock_identify, mock_summaries):
+        repos = self._make_repos([f"owner/repo{i}" for i in range(10)])
+        mock_identify.side_effect = [
+            ["owner/repo0", "owner/repo1"],  # DeepSeek
+            ["owner/repo1", "owner/repo2"],  # Ollama — repo1 is a duplicate
+        ]
+        mock_summaries.return_value = {}
+
+        result = discover_repos.identify_and_summarize_interesting(repos, total=4)
+
+        assert result is not None
+        selected, _ = result
+        names = [r["nameWithOwner"] for r in selected]
+        assert len(names) == len(set(names)), "Duplicate repos in selected list"
+        assert len(names) == 3  # 4 unique but only 3 existed across both lists
+
+
 class TestDiscoverReposMain:
     @patch("discover_repos.report_uncategorized_repos")
     @patch("discover_repos.get_or_create_weekly_issue")

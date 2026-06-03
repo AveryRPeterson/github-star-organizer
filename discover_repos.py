@@ -611,25 +611,34 @@ def identify_and_summarize_interesting(repos: list[dict], current_stars: set[str
     ds_count = (total_count + 1) // 2
     ol_count = total_count // 2
     deepseek_interesting = identify_interesting_repos(deepseek_repos, model="deepseek", current_stars=current_stars, count=ds_count)
-    ollama_interesting = identify_interesting_repos(ollama_repos, model="ollama", current_stars=current_stars, count=ol_count)
+    ollama_interesting = (
+        identify_interesting_repos(ollama_repos, model="ollama", current_stars=current_stars, count=ol_count)
+        if ol_count > 0 else None
+    )
 
-    # Consolidate results
-    interesting_names = set()
+    # Consolidate results — preserve insertion order (DeepSeek first) then trim to total
+    interesting_names: list[str] = []
+    seen: set[str] = set()
+    for name in (deepseek_interesting or []) + (ollama_interesting or []):
+        if name not in seen:
+            seen.add(name)
+            interesting_names.append(name)
+    interesting_names = interesting_names[:total_count]
+
     if deepseek_interesting:
-        interesting_names.update(deepseek_interesting)
         logger.info(f"DeepSeek identified: {deepseek_interesting}")
     if ollama_interesting:
-        interesting_names.update(ollama_interesting)
         logger.info(f"Ollama identified: {ollama_interesting}")
 
     if not interesting_names:
         logger.warning("No interesting repos identified by either model")
         return None
 
-    logger.info(f"Consolidated {len(interesting_names)} unique interesting repos")
+    logger.info(f"Consolidated {len(interesting_names)} unique interesting repos (capped at {total_count})")
 
-    # Filter original repos to only selected ones
-    selected_repos = [r for r in repos if r["nameWithOwner"] in interesting_names]
+    # Filter original repos to only selected ones (capped set, preserve discovery order)
+    selected_set = set(interesting_names)
+    selected_repos = [r for r in repos if r["nameWithOwner"] in selected_set]
     logger.info(f"Selected {len(selected_repos)} repos for detailed analysis")
 
     # Generate summaries for selected repos
