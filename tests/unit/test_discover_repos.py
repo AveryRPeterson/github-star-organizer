@@ -313,7 +313,15 @@ class TestIdentifyAndSummarizeInteresting:
         repos = self._make_repos([f"owner/repo{i}" for i in range(10)])
         # First call (Ollama) returns None, second call (DeepSeek) succeeds
         mock_identify.side_effect = [None, ["owner/repo0"]]
-        mock_summaries.return_value = {}
+        mock_summaries.return_value = {
+            "owner/repo0": {
+                "purpose": "test",
+                "use_case": "testing",
+                "unusual_applications": ["app1"],
+                "provider": "DeepSeek",
+                "model": "deepseek-chat"
+            }
+        }
 
         result = discover_repos.identify_and_summarize_interesting(repos, total=1)
 
