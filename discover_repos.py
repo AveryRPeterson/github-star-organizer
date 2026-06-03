@@ -259,7 +259,7 @@ def _identify_via_ollama(prompt: str) -> list[str] | None:
         try:
             logger.info(f"Trying Ollama with model: {model}")
             response = requests.post(
-                "https://ollama.com/api/chat",
+                "https://api.ollama.com/v1/chat/completions",
                 headers={
                     "Authorization": f"Bearer {api_key}",
                     "Content-Type": "application/json",
@@ -280,7 +280,7 @@ def _identify_via_ollama(prompt: str) -> list[str] | None:
 
             if response.status_code == 200:
                 result = response.json()
-                content = result.get("message", {}).get("content", "")
+                content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
                 if content:
                     try:
                         parsed = json.loads(content)
@@ -443,7 +443,7 @@ Repositories to analyze:
         try:
             logger.info(f"Trying Ollama with model: {model}")
             response = requests.post(
-                "https://ollama.com/api/chat",
+                "https://api.ollama.com/v1/chat/completions",
                 headers={
                     "Authorization": f"Bearer {api_key}",
                     "Content-Type": "application/json",
@@ -464,7 +464,7 @@ Repositories to analyze:
 
             if response.status_code == 200:
                 result = response.json()
-                content = result.get("message", {}).get("content", "")
+                content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
                 if content:
                     try:
                         parsed = json.loads(content)
