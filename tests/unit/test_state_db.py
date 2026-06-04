@@ -341,6 +341,21 @@ class TestUncategorizedRepos:
         assert row["issue_number"] == "2000"
 
 
+class TestConnectionErrorHandling:
+    def test_rollback_on_exception(self, temp_db):
+        """Verify the connection is rolled back and closed when an exception occurs."""
+        state_db.init_db()
+
+        with pytest.raises(sqlite3.OperationalError):
+            with state_db._conn() as conn:
+                conn.execute("INSERT INTO discovered_repos (name_with_owner, discovered_at) VALUES (?, ?)", ("owner/r", "2026-01-01"))
+                conn.execute("SELECT * FROM nonexistent_table")  # forces error
+
+        # DB is still usable after the error
+        result = state_db.get_discovered_repos()
+        assert "owner/r" not in result
+
+
 class TestMixedOperations:
     def test_discovered_and_uncategorized_separate(self, temp_db):
         """Verify discovered and uncategorized repos are stored separately."""
