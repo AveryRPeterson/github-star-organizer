@@ -371,11 +371,12 @@ def call_deepseek_summaries(repos: list[dict]) -> dict[str, dict] | None:
         desc = repo.get("description") or "No description"
         repo_list_str += f"{i}. {repo['nameWithOwner']} | {desc} | language: {lang}\n"
 
+    unusual_apps_count = int(os.environ.get("UNUSUAL_APPS_COUNT", "5"))
     user_prompt = f"""Analyze these uncategorized GitHub repositories and generate structured summaries.
 For each repo, provide:
 - purpose: What is the primary purpose of this project?
 - use_case: What is a suggested use case for this project?
-- unusual_applications: An array of 3 possible unusual or creative applications
+- unusual_applications: An array of exactly {unusual_apps_count} possible unusual or creative applications
 
 Return ONLY valid JSON with this structure:
 {{
@@ -441,20 +442,21 @@ Repositories to analyze:
         return None
 
 
-def call_ollama_summaries(repos: list[dict]) -> dict[str, dict] | None:
+def call_ollama_summaries(repos: list[dict]) -> tuple[dict[str, dict], str] | None:
     """
-    Call Ollama Cloud API to generate summaries with 3-tier fallback to DeepSeek.
+    Call Ollama Cloud API to generate summaries with fallback to DeepSeek.
 
     Args:
         repos: List of repository dicts
 
     Returns:
-        Dict keyed by nameWithOwner with {purpose, use_case, unusual_applications}, or None on error
+        Tuple of (summaries_dict, model_name) on success, or None on error.
+        summaries_dict is keyed by nameWithOwner with {purpose, use_case, unusual_applications}.
     """
     api_key = os.getenv("OLLAMA_API_KEY")
     if not api_key:
         logger.warning("OLLAMA_API_KEY not set, falling back to DeepSeek")
-        return call_deepseek_summaries(repos)
+        return None
 
     repo_list_str = ""
     for i, repo in enumerate(repos, 1):
@@ -462,11 +464,12 @@ def call_ollama_summaries(repos: list[dict]) -> dict[str, dict] | None:
         desc = repo.get("description") or "No description"
         repo_list_str += f"{i}. {repo['nameWithOwner']} | {desc} | language: {lang}\n"
 
+    unusual_apps_count = int(os.environ.get("UNUSUAL_APPS_COUNT", "5"))
     user_prompt = f"""Analyze these uncategorized GitHub repositories and generate structured summaries.
 For each repo, provide:
 - purpose: What is the primary purpose of this project?
 - use_case: What is a suggested use case for this project?
-- unusual_applications: An array of 3 possible unusual or creative applications
+- unusual_applications: An array of exactly {unusual_apps_count} possible unusual or creative applications
 
 Return ONLY valid JSON with this structure:
 {{
@@ -483,11 +486,10 @@ Return ONLY valid JSON with this structure:
 Repositories to analyze:
 {repo_list_str}"""
 
-    # Dynamically discover available models
     available_models = get_available_ollama_models(api_key)
     if not available_models:
         logger.warning("No available Ollama models, falling back to DeepSeek")
-        return call_deepseek_summaries(repos)
+        return None
 
     for model in available_models:
         try:
@@ -527,7 +529,7 @@ Repositories to analyze:
                             }
                         if summaries:
                             logger.info(f"Ollama {model} successful")
-                            return summaries
+                            return (summaries, model)
                     except json.JSONDecodeError:
                         logger.warning(f"Ollama {model} returned invalid JSON")
                         continue
@@ -540,9 +542,8 @@ Repositories to analyze:
             logger.warning(f"Ollama {model} request failed: {e}")
             continue
 
-    # All Ollama tiers failed, fall back to DeepSeek
     logger.warning("All Ollama models exhausted, falling back to DeepSeek")
-    return call_deepseek_summaries(repos)
+    return None
 
 
 def identify_and_summarize_interesting(repos: list[dict], current_stars: set[str] | None = None, total: int = 13) -> tuple[list[dict], dict[str, dict]] | None:
@@ -608,20 +609,20 @@ def get_single_model_summaries(repos: list[dict]) -> dict[str, dict] | None:
         or None if all providers fail
     """
     # Try Ollama first
-    summaries = call_ollama_summaries(repos)
-    if summaries:
-        # Add provider/model metadata to each summary
-        for repo_name, summary in summaries.items():
+    ollama_result = call_ollama_summaries(repos)
+    if ollama_result:
+        summaries, model_name = ollama_result
+        for summary in summaries.values():
             summary["provider"] = "Ollama"
-            summary["model"] = "auto-selected"  # User will see actual model in logs
-        logger.info("Using Ollama for summaries")
+            summary["model"] = model_name
+        logger.info(f"Using Ollama ({model_name}) for summaries")
         return summaries
 
     # Fallback to DeepSeek
     logger.warning("Ollama summaries failed, falling back to DeepSeek")
     summaries = call_deepseek_summaries(repos)
     if summaries:
-        for repo_name, summary in summaries.items():
+        for summary in summaries.values():
             summary["provider"] = "DeepSeek"
             summary["model"] = "deepseek-chat"
         logger.info("Using DeepSeek for summaries")
