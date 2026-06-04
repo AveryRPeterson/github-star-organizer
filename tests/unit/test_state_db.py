@@ -25,7 +25,7 @@ def temp_db(monkeypatch):
 
 class TestInitDb:
     def test_init_db_creates_tables(self, temp_db):
-        """Verify init_db creates both required tables."""
+        """Verify init_db creates all required tables."""
         state_db.init_db()
 
         with sqlite3.connect(temp_db) as conn:
@@ -35,6 +35,7 @@ class TestInitDb:
 
         assert "discovered_repos" in tables
         assert "uncategorized_repos" in tables
+        assert "ollama_model_metrics" in tables
 
     def test_init_db_idempotent(self, temp_db):
         """Verify init_db can be called multiple times without error."""
@@ -46,7 +47,7 @@ class TestInitDb:
             cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
             tables = {row[0] for row in cursor.fetchall()}
 
-        assert len(tables) == 2
+        assert len(tables) == 3
 
 
 class TestDiscoveredRepos:

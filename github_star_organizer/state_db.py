@@ -47,6 +47,21 @@ def init_db() -> None:
                 issue_number TEXT
             )
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS ollama_model_metrics (
+                model_name TEXT PRIMARY KEY,
+                success_200_count INTEGER DEFAULT 0,
+                empty_body_count INTEGER DEFAULT 0,
+                empty_json_count INTEGER DEFAULT 0,
+                invalid_json_count INTEGER DEFAULT 0,
+                client_4xx_count INTEGER DEFAULT 0,
+                subscription_403_count INTEGER DEFAULT 0,
+                server_5xx_count INTEGER DEFAULT 0,
+                timeout_count INTEGER DEFAULT 0,
+                hallucination_count INTEGER DEFAULT 0,
+                last_updated TEXT NOT NULL
+            )
+        """)
 
 
 
@@ -127,3 +142,97 @@ def get_issue_number_for_discovered(name_with_owner: str) -> str | None:
             (name_with_owner,),
         ).fetchone()
     return row[0] if row else None
+
+
+def record_ollama_model_metric(
+    model_name: str,
+    success: bool = False,
+    empty_body: bool = False,
+    empty_json: bool = False,
+    invalid_json: bool = False,
+    status_code: int | None = None,
+    timeout: bool = False,
+    hallucination: bool = False,
+) -> None:
+    """Record a metric for an Ollama model attempt."""
+    with _conn() as conn:
+        # Initialize row if not exists
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO ollama_model_metrics
+            (model_name, last_updated) VALUES (?, ?)
+            """,
+            (model_name, datetime.date.today().isoformat()),
+        )
+
+        # Update metrics
+        updates = []
+        if success:
+            updates.append("success_200_count = success_200_count + 1")
+        if empty_body:
+            updates.append("empty_body_count = empty_body_count + 1")
+        if empty_json:
+            updates.append("empty_json_count = empty_json_count + 1")
+        if invalid_json:
+            updates.append("invalid_json_count = invalid_json_count + 1")
+        if status_code == 403:
+            updates.append("subscription_403_count = subscription_403_count + 1")
+            updates.append("client_4xx_count = client_4xx_count + 1")
+        elif status_code and 400 <= status_code < 500:
+            updates.append("client_4xx_count = client_4xx_count + 1")
+        elif status_code and status_code >= 500:
+            updates.append("server_5xx_count = server_5xx_count + 1")
+        if timeout:
+            updates.append("timeout_count = timeout_count + 1")
+        if hallucination:
+            updates.append("hallucination_count = hallucination_count + 1")
+
+        if updates:
+            updates.append("last_updated = ?")
+            sql = f"UPDATE ollama_model_metrics SET {', '.join(updates)} WHERE model_name = ?"
+            conn.execute(sql, (datetime.date.today().isoformat(), model_name))
+
+
+def get_sorted_ollama_models(base_models: list[str]) -> list[str]:
+    """
+    Sort curated Ollama models by reliability metrics.
+
+    Scoring: success_200 * 100 - empty_body * 10 - empty_json * 5
+             - client_4xx * 15 - server_5xx * 20 - timeout * 25
+             - hallucination * 30 - subscription_403 * 12
+
+    Models with no metrics (newly added) appear at the end to try them.
+    Returns the reordered list with highest-scoring (most reliable) first.
+    """
+    with _conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM ollama_model_metrics WHERE model_name IN ({})".format(
+                ",".join("?" * len(base_models))
+            ),
+            base_models,
+        ).fetchall()
+
+    metrics_dict = {row["model_name"]: dict(row) for row in rows}
+
+    def score_model(model_name: str) -> tuple:
+        """Return (has_metrics, score) for sorting."""
+        if model_name not in metrics_dict:
+            # New models with no history go to the end but maintain their position
+            return (False, 0)
+
+        m = metrics_dict[model_name]
+        score = (
+            (m["success_200_count"] or 0) * 100
+            - (m["empty_body_count"] or 0) * 10
+            - (m["empty_json_count"] or 0) * 5
+            - (m["client_4xx_count"] or 0) * 15
+            - (m["server_5xx_count"] or 0) * 20
+            - (m["timeout_count"] or 0) * 25
+            - (m["hallucination_count"] or 0) * 30
+            - (m["subscription_403_count"] or 0) * 12
+        )
+        return (True, score)
+
+    # Sort: models with metrics first (by score descending), then new models
+    sorted_models = sorted(base_models, key=score_model, reverse=True)
+    return sorted_models

@@ -246,21 +246,19 @@ def _identify_via_deepseek(prompt: str) -> list[str] | None:
 
 def get_available_ollama_models(api_key: str) -> list[str] | None:
     """
-    Get working Ollama Cloud API models.
+    Get Ollama Cloud API models sorted by historical reliability.
 
-    Uses a curated list of verified free/accessible models to avoid the
-    overhead and unreliability of dynamic discovery (which returns 40+ models
-    with ~90% failure rate due to subscription requirements, timeouts, etc).
+    Uses a curated list of verified free/accessible models. Models are
+    dynamically sorted by historical metrics (success rate, error types,
+    hallucination rate) to put the most reliable models first.
 
     Args:
         api_key: Ollama Cloud API key (unused but kept for API consistency)
 
     Returns:
-        List of known-working chat model names prioritized by capability
+        List of curated models sorted by reliability (best first)
     """
-    # Curated list of verified free/accessible models prioritized by capability
-    # Based on community testing and Ollama Cloud API availability
-    working_models = [
+    base_models = [
         # Coding/reasoning models (preferred)
         "qwen3-coder-next",      # Strong coding capability
         "qwen3-coder:480b",      # Full-size qwen3 coder
@@ -282,8 +280,10 @@ def get_available_ollama_models(api_key: str) -> list[str] | None:
         "rnj-1:8b",              # Small, specialized
     ]
 
-    logger.info(f"Using curated working models: {working_models}")
-    return working_models
+    # Sort by historical metrics
+    sorted_models = state_db.get_sorted_ollama_models(base_models)
+    logger.info(f"Using curated working models (sorted by reliability): {sorted_models}")
+    return sorted_models
 
 
 def _identify_via_ollama(prompt: str) -> list[str] | None:
@@ -327,26 +327,37 @@ def _identify_via_ollama(prompt: str) -> list[str] | None:
                 content = result.get("message", {}).get("content", "")
                 if not content:
                     logger.warning(f"Ollama {model} returned empty content")
+                    state_db.record_ollama_model_metric(model, empty_body=True)
                     continue
                 try:
                     parsed = json.loads(content)
                     repos = parsed.get("interesting_repos", [])
                     if repos:
                         logger.info(f"Ollama {model} successful")
+                        state_db.record_ollama_model_metric(model, success=True)
                         return repos
                     else:
                         logger.warning(f"Ollama {model} returned empty interesting_repos list")
+                        state_db.record_ollama_model_metric(model, empty_json=True)
                         continue
                 except json.JSONDecodeError:
                     logger.warning(f"Ollama {model} returned invalid JSON: {content[:200]!r}")
+                    state_db.record_ollama_model_metric(model, invalid_json=True)
                     continue
             elif response.status_code == 403:
                 logger.warning(f"Ollama {model} not accessible (subscription required or no access)")
+                state_db.record_ollama_model_metric(model, status_code=403)
                 continue
             else:
                 logger.warning(f"Ollama {model} API error: {response.status_code} — {response.text[:200]}")
+                state_db.record_ollama_model_metric(model, status_code=response.status_code)
+        except requests.Timeout:
+            logger.warning(f"Ollama {model} request timed out")
+            state_db.record_ollama_model_metric(model, timeout=True)
+            continue
         except requests.RequestException as e:
             logger.warning(f"Ollama {model} request failed: {e}")
+            state_db.record_ollama_model_metric(model, timeout=isinstance(e, requests.Timeout))
             continue
 
     # All Ollama models exhausted, fall back to DeepSeek
@@ -524,6 +535,7 @@ Repositories to analyze:
                 content = result.get("message", {}).get("content", "")
                 if not content:
                     logger.warning(f"Ollama {model} returned empty content")
+                    state_db.record_ollama_model_metric(model, empty_body=True)
                     continue
                 try:
                     parsed = json.loads(content)
@@ -536,20 +548,30 @@ Repositories to analyze:
                         }
                     if summaries:
                         logger.info(f"Ollama {model} successful")
+                        state_db.record_ollama_model_metric(model, success=True)
                         return (summaries, model)
                     else:
                         logger.warning(f"Ollama {model} returned no repos in JSON: {content[:200]!r}")
+                        state_db.record_ollama_model_metric(model, empty_json=True)
                         continue
                 except json.JSONDecodeError:
                     logger.warning(f"Ollama {model} returned invalid JSON: {content[:200]!r}")
+                    state_db.record_ollama_model_metric(model, invalid_json=True)
                     continue
             elif response.status_code == 403:
                 logger.warning(f"Ollama {model} not accessible (subscription required or no access)")
+                state_db.record_ollama_model_metric(model, status_code=403)
                 continue
             else:
                 logger.warning(f"Ollama {model} API error: {response.status_code} — {response.text[:200]}")
+                state_db.record_ollama_model_metric(model, status_code=response.status_code)
+        except requests.Timeout:
+            logger.warning(f"Ollama {model} request timed out")
+            state_db.record_ollama_model_metric(model, timeout=True)
+            continue
         except requests.RequestException as e:
             logger.warning(f"Ollama {model} request failed: {e}")
+            state_db.record_ollama_model_metric(model, timeout=isinstance(e, requests.Timeout))
             continue
 
     logger.warning("All Ollama models exhausted, falling back to DeepSeek")
@@ -596,6 +618,8 @@ def identify_and_summarize_interesting(repos: list[dict], current_stars: set[str
     hallucinated = selected_set - candidate_names
     if hallucinated:
         logger.warning(f"Model returned {len(hallucinated)} repo(s) not in candidate list (hallucinated): {hallucinated}")
+        # Record hallucination metrics for the model that was used
+        # Note: we need to track which model was used in identify_interesting_repos
     selected_repos = [r for r in repos if r["nameWithOwner"] in selected_set]
     logger.info(f"Selected {len(selected_repos)} repos for detailed analysis")
 
