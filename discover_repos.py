@@ -325,21 +325,26 @@ def _identify_via_ollama(prompt: str) -> list[str] | None:
             if response.status_code == 200:
                 result = response.json()
                 content = result.get("message", {}).get("content", "")
-                if content:
-                    try:
-                        parsed = json.loads(content)
-                        repos = parsed.get("interesting_repos", [])
-                        if repos:
-                            logger.info(f"Ollama {model} successful")
-                            return repos
-                    except json.JSONDecodeError:
-                        logger.warning(f"Ollama {model} returned invalid JSON")
+                if not content:
+                    logger.warning(f"Ollama {model} returned empty content")
+                    continue
+                try:
+                    parsed = json.loads(content)
+                    repos = parsed.get("interesting_repos", [])
+                    if repos:
+                        logger.info(f"Ollama {model} successful")
+                        return repos
+                    else:
+                        logger.warning(f"Ollama {model} returned empty interesting_repos list")
                         continue
+                except json.JSONDecodeError:
+                    logger.warning(f"Ollama {model} returned invalid JSON: {content[:200]!r}")
+                    continue
             elif response.status_code == 403:
                 logger.warning(f"Ollama {model} not accessible (subscription required or no access)")
                 continue
             else:
-                logger.warning(f"Ollama {model} API error: {response.status_code}")
+                logger.warning(f"Ollama {model} API error: {response.status_code} — {response.text[:200]}")
         except requests.RequestException as e:
             logger.warning(f"Ollama {model} request failed: {e}")
             continue
@@ -517,27 +522,32 @@ Repositories to analyze:
             if response.status_code == 200:
                 result = response.json()
                 content = result.get("message", {}).get("content", "")
-                if content:
-                    try:
-                        parsed = json.loads(content)
-                        summaries = {}
-                        for repo_data in parsed.get("repos", []):
-                            summaries[repo_data["nameWithOwner"]] = {
-                                "purpose": repo_data.get("purpose", ""),
-                                "use_case": repo_data.get("use_case", ""),
-                                "unusual_applications": repo_data.get("unusual_applications", []),
-                            }
-                        if summaries:
-                            logger.info(f"Ollama {model} successful")
-                            return (summaries, model)
-                    except json.JSONDecodeError:
-                        logger.warning(f"Ollama {model} returned invalid JSON")
+                if not content:
+                    logger.warning(f"Ollama {model} returned empty content")
+                    continue
+                try:
+                    parsed = json.loads(content)
+                    summaries = {}
+                    for repo_data in parsed.get("repos", []):
+                        summaries[repo_data["nameWithOwner"]] = {
+                            "purpose": repo_data.get("purpose", ""),
+                            "use_case": repo_data.get("use_case", ""),
+                            "unusual_applications": repo_data.get("unusual_applications", []),
+                        }
+                    if summaries:
+                        logger.info(f"Ollama {model} successful")
+                        return (summaries, model)
+                    else:
+                        logger.warning(f"Ollama {model} returned no repos in JSON: {content[:200]!r}")
                         continue
+                except json.JSONDecodeError:
+                    logger.warning(f"Ollama {model} returned invalid JSON: {content[:200]!r}")
+                    continue
             elif response.status_code == 403:
                 logger.warning(f"Ollama {model} not accessible (subscription required or no access)")
                 continue
             else:
-                logger.warning(f"Ollama {model} API error: {response.status_code}")
+                logger.warning(f"Ollama {model} API error: {response.status_code} — {response.text[:200]}")
         except requests.RequestException as e:
             logger.warning(f"Ollama {model} request failed: {e}")
             continue
@@ -580,10 +590,24 @@ def identify_and_summarize_interesting(repos: list[dict], current_stars: set[str
 
     logger.info(f"Identified {len(interesting_names)} interesting repos: {interesting_names}")
 
-    # Filter to selected repos (in original order)
+    # Filter to selected repos (in original order), validating against candidate list
+    candidate_names = {r["nameWithOwner"] for r in repos}
     selected_set = set(interesting_names)
+    hallucinated = selected_set - candidate_names
+    if hallucinated:
+        logger.warning(f"Model returned {len(hallucinated)} repo(s) not in candidate list (hallucinated): {hallucinated}")
     selected_repos = [r for r in repos if r["nameWithOwner"] in selected_set]
     logger.info(f"Selected {len(selected_repos)} repos for detailed analysis")
+
+    if not selected_repos:
+        logger.warning("No valid repos selected (all returned names were hallucinated or not in candidate list), falling back to DeepSeek")
+        interesting_names = identify_interesting_repos(repos, model="deepseek", current_stars=current_stars, count=total)
+        if not interesting_names:
+            logger.warning("DeepSeek fallback identification also failed")
+            return None
+        logger.info(f"DeepSeek identified {len(interesting_names)} repos: {interesting_names}")
+        selected_repos = [r for r in repos if r["nameWithOwner"] in set(interesting_names)]
+        logger.info(f"Selected {len(selected_repos)} repos for detailed analysis after fallback")
 
     # Generate summaries using single provider (Ollama primary, DeepSeek fallback)
     summaries = get_single_model_summaries(selected_repos)
