@@ -16,7 +16,7 @@ from github_star_organizer.issue_manager import (
 from github_star_organizer import state_db
 
 
-logger = get_logger("find_weird")
+logger = get_logger("discover_interesting")
 
 
 def get_current_stars() -> set[str]:
