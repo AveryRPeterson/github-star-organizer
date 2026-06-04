@@ -3,6 +3,7 @@ import json
 import tempfile
 import sqlite3
 import pytest
+import gc
 from unittest.mock import patch
 from github_star_organizer import state_db
 
@@ -16,6 +17,8 @@ def temp_db(monkeypatch):
     # Patch the module's DB_PATH so it uses our temp path
     monkeypatch.setattr("github_star_organizer.state_db.DB_PATH", path)
     yield path
+    # Force garbage collection to close any dangling connections
+    gc.collect()
     if os.path.exists(path):
         os.remove(path)
 
