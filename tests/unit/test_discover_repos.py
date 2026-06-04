@@ -162,12 +162,12 @@ class TestCreateDiscoveryIssue:
             "homepageUrl": "https://example.com",
         }
         model_summaries = {
-            "deepseek": {
-                "owner/repo": {
-                    "purpose": "Test tool",
-                    "use_case": "Dev testing",
-                    "unusual_applications": ["App1", "App2", "App3"],
-                }
+            "owner/repo": {
+                "purpose": "Test tool",
+                "use_case": "Dev testing",
+                "unusual_applications": ["App1", "App2", "App3"],
+                "provider": "Ollama",
+                "model": "qwen3-coder-next",
             }
         }
 
@@ -185,9 +185,10 @@ class TestCreateDiscoveryIssue:
         assert "MIT License" in body
         assert "2026-05-15" in body
         assert "**Homepage:** https://example.com" in body
-        assert "DeepSeek Analysis" in body
+        assert "## Analysis" in body
         assert "Test tool" in body
         assert "App1" in body
+        assert "Ollama (qwen3-coder-next)" in body
 
     @patch("github_star_organizer.issue_manager.run_command")
     def test_creates_issue_omits_missing_language_license_homepage(self, mock_run):
@@ -211,7 +212,7 @@ class TestCreateDiscoveryIssue:
         assert "2026-04-01" in body
 
     @patch("github_star_organizer.issue_manager.run_command")
-    def test_includes_both_model_sections_when_available(self, mock_run):
+    def test_includes_provider_and_model_metadata(self, mock_run):
         mock_run.return_value = "https://github.com/owner/repo/issues/43"
         repo = {
             "nameWithOwner": "owner/repo",
@@ -223,29 +224,21 @@ class TestCreateDiscoveryIssue:
             "homepageUrl": None,
         }
         model_summaries = {
-            "deepseek": {
-                "owner/repo": {
-                    "purpose": "DS purpose",
-                    "use_case": "DS use case",
-                    "unusual_applications": ["DS App1"],
-                }
-            },
-            "ollama": {
-                "owner/repo": {
-                    "purpose": "OL purpose",
-                    "use_case": "OL use case",
-                    "unusual_applications": ["OL App1"],
-                }
-            },
+            "owner/repo": {
+                "purpose": "A purpose",
+                "use_case": "A use case",
+                "unusual_applications": ["App1"],
+                "provider": "DeepSeek",
+                "model": "deepseek-chat",
+            }
         }
 
         result = issue_manager.create_discovery_issue(repo, model_summaries)
 
         body = mock_run.call_args[0][0][mock_run.call_args[0][0].index("--body") + 1]
-        assert "DeepSeek Analysis" in body
-        assert "Ollama Analysis" in body
-        assert "DS purpose" in body
-        assert "OL purpose" in body
+        assert "## Analysis" in body
+        assert "A purpose" in body
+        assert "DeepSeek (deepseek-chat)" in body
 
     @patch("github_star_organizer.issue_manager.run_command")
     def test_title_format(self, mock_run):
@@ -264,6 +257,77 @@ class TestCreateDiscoveryIssue:
         call_args = mock_run.call_args[0][0]
         title_idx = call_args.index("--title") + 1
         assert call_args[title_idx] == "Discovered: owner/my-repo"
+
+
+class TestIdentifyAndSummarizeInteresting:
+    def _make_repos(self, names):
+        return [
+            {
+                "nameWithOwner": n,
+                "description": "desc",
+                "repositoryTopics": {"nodes": []},
+                "primaryLanguage": None,
+                "languages": {"edges": [], "totalSize": 0},
+                "licenseInfo": None,
+                "updatedAt": "2026-01-01T00:00:00Z",
+                "homepageUrl": None,
+            }
+            for n in names
+        ]
+
+    @patch("discover_repos.get_single_model_summaries")
+    @patch("discover_repos.identify_interesting_repos")
+    def test_identifies_and_summarizes_with_single_model(self, mock_identify, mock_summaries):
+        repos = self._make_repos([f"owner/repo{i}" for i in range(10)])
+        mock_identify.return_value = ["owner/repo0", "owner/repo1"]
+        mock_summaries.return_value = {
+            "owner/repo0": {
+                "purpose": "test",
+                "use_case": "testing",
+                "unusual_applications": ["app1"],
+                "provider": "Ollama",
+                "model": "auto"
+            },
+            "owner/repo1": {
+                "purpose": "test2",
+                "use_case": "testing2",
+                "unusual_applications": ["app2"],
+                "provider": "Ollama",
+                "model": "auto"
+            }
+        }
+
+        result = discover_repos.identify_and_summarize_interesting(repos, total=2)
+
+        assert result is not None
+        selected, summaries = result
+        assert len(selected) == 2
+        # Verify provider/model metadata is present
+        for repo_name in summaries:
+            assert "provider" in summaries[repo_name]
+            assert "model" in summaries[repo_name]
+
+    @patch("discover_repos.get_single_model_summaries")
+    @patch("discover_repos.identify_interesting_repos")
+    def test_fallback_to_deepseek_when_ollama_fails(self, mock_identify, mock_summaries):
+        repos = self._make_repos([f"owner/repo{i}" for i in range(10)])
+        # First call (Ollama) returns None, second call (DeepSeek) succeeds
+        mock_identify.side_effect = [None, ["owner/repo0"]]
+        mock_summaries.return_value = {
+            "owner/repo0": {
+                "purpose": "test",
+                "use_case": "testing",
+                "unusual_applications": ["app1"],
+                "provider": "DeepSeek",
+                "model": "deepseek-chat"
+            }
+        }
+
+        result = discover_repos.identify_and_summarize_interesting(repos, total=1)
+
+        assert result is not None
+        # Verify both calls were made (Ollama first, then DeepSeek fallback)
+        assert mock_identify.call_count == 2
 
 
 class TestDiscoverReposMain:

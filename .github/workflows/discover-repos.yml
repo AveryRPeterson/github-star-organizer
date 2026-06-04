@@ -9,6 +9,10 @@ on:
         description: 'Number of repos to discover (default: 13)'
         type: number
         default: 13
+      unusual_apps_count:
+        description: 'Number of unusual applications per repo (default: 5)'
+        type: number
+        default: 5
 
 jobs:
   discover-repos:
@@ -49,8 +53,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GITHUB_TOKEN: ${{ github.token }}
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-          OLLAMA_CLOUD_KEY: ${{ secrets.OLLAMA_CLOUD_KEY }}
+          OLLAMA_API_KEY: ${{ secrets.OLLAMA_API_KEY }}
           DISCOVERY_COUNT: ${{ github.event.inputs.discovery_count || '13' }}
+          UNUSUAL_APPS_COUNT: ${{ github.event.inputs.unusual_apps_count || '5' }}
         run: python discover_repos.py
 
       - name: Save state DB to cache
