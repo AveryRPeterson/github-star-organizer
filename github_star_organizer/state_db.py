@@ -2,14 +2,23 @@ import sqlite3
 import json
 import datetime
 import os
+from contextlib import contextmanager
 
 DB_PATH = os.getenv("STATE_DB_PATH", "state.db")
 
 
-def _conn() -> sqlite3.Connection:
+@contextmanager
+def _conn():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
-    return conn
+    try:
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 def init_db() -> None:
@@ -38,7 +47,7 @@ def init_db() -> None:
                 issue_number TEXT
             )
         """)
-        conn.commit()
+
 
 
 def get_discovered_repos() -> set[str]:
@@ -78,7 +87,7 @@ def insert_discovered_repo(repo: dict, model_summaries: dict, issue_number: str)
                 datetime.date.today().isoformat(),
             ),
         )
-        conn.commit()
+
 
 
 def get_uncategorized_repos() -> set[str]:
@@ -108,7 +117,7 @@ def insert_uncategorized_repos(repos: list[dict], issue_number: str) -> None:
                     issue_number,
                 ),
             )
-        conn.commit()
+
 
 
 def get_issue_number_for_discovered(name_with_owner: str) -> str | None:
