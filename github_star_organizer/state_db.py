@@ -59,9 +59,16 @@ def init_db() -> None:
                 server_5xx_count INTEGER DEFAULT 0,
                 timeout_count INTEGER DEFAULT 0,
                 hallucination_count INTEGER DEFAULT 0,
+                out_of_scope_count INTEGER DEFAULT 0,
                 last_updated TEXT NOT NULL
             )
         """)
+        # Add out_of_scope_count column if it doesn't exist (migration for existing DBs)
+        try:
+            conn.execute("ALTER TABLE ollama_model_metrics ADD COLUMN out_of_scope_count INTEGER DEFAULT 0")
+        except sqlite3.OperationalError:
+            # Column already exists
+            pass
 
 
 
@@ -153,6 +160,7 @@ def record_ollama_model_metric(
     status_code: int | None = None,
     timeout: bool = False,
     hallucination: bool = False,
+    out_of_scope: bool = False,
 ) -> None:
     """Record a metric for an Ollama model attempt."""
     with _conn() as conn:
@@ -186,6 +194,8 @@ def record_ollama_model_metric(
             updates.append("timeout_count = timeout_count + 1")
         if hallucination:
             updates.append("hallucination_count = hallucination_count + 1")
+        if out_of_scope:
+            updates.append("out_of_scope_count = out_of_scope_count + 1")
 
         if updates:
             updates.append("last_updated = ?")
@@ -228,7 +238,10 @@ def get_sorted_ollama_models(base_models: list[str], skip_gated: bool = True) ->
 
     Scoring: success_200 * 100 - empty_body * 10 - empty_json * 5
              - client_4xx * 15 - server_5xx * 20 - timeout * 25
-             - hallucination * 30 - subscription_403 * 12
+             - hallucination * 30 - subscription_403 * 12 - out_of_scope * 8
+
+    out_of_scope: model returned valid repos but all were already starred/discovered.
+    Penalty lower than hallucination since the model worked correctly, just redundantly.
 
     Models with no metrics (newly added) appear at the end to try them.
     Returns the reordered list with highest-scoring (most reliable) first.
@@ -272,6 +285,7 @@ def get_sorted_ollama_models(base_models: list[str], skip_gated: bool = True) ->
             - (m["timeout_count"] or 0) * 25
             - (m["hallucination_count"] or 0) * 30
             - (m["subscription_403_count"] or 0) * 12
+            - (m["out_of_scope_count"] or 0) * 8
         )
         return (True, score)
 

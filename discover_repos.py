@@ -359,7 +359,7 @@ def _identify_via_ollama(prompt: str, candidate_names: set[str] | None = None, m
                             logger.info(f"Ollama {model} returned {len(out_of_scope)} out-of-scope repo(s) (already starred/discovered): {out_of_scope}")
                         if not in_scope:
                             logger.info(f"Ollama {model} returned only out-of-scope repos, trying next model ({models_tried}/{max_models})")
-                            state_db.record_ollama_model_metric(model, success=True)
+                            state_db.record_ollama_model_metric(model, out_of_scope=True)
                             continue
                         logger.info(f"Ollama {model} successful")
                         state_db.record_ollama_model_metric(model, success=True)

@@ -509,3 +509,26 @@ class TestOllamaModelMetrics:
         assert "alpha" in known
         assert "beta" in known
         assert len(known) == 2
+
+    def test_out_of_scope_metric_recorded(self, temp_db):
+        """Verify out_of_scope metric is recorded and affects scoring."""
+        state_db.init_db()
+        state_db.record_ollama_model_metric("model-a", success=True)
+        state_db.record_ollama_model_metric("model-b", out_of_scope=True)
+
+        # model-a has 100 points, model-b has -8 points
+        result = state_db.get_sorted_ollama_models(["model-a", "model-b"])
+        assert result[0] == "model-a"
+        assert result[1] == "model-b"
+
+    def test_out_of_scope_models_pushed_down_with_multiple_failures(self, temp_db):
+        """Model with multiple out-of-scope results ranks below reliable models."""
+        state_db.init_db()
+        state_db.record_ollama_model_metric("reliable", success=True)
+        state_db.record_ollama_model_metric("reliable", success=True)
+        for _ in range(5):
+            state_db.record_ollama_model_metric("redundant", out_of_scope=True)
+
+        result = state_db.get_sorted_ollama_models(["reliable", "redundant"])
+        assert result[0] == "reliable"
+        assert result[1] == "redundant"
