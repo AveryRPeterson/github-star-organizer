@@ -1,0 +1,80 @@
+name: Probe Ollama Models
+
+on:
+  schedule:
+    - cron: '0 22 * * 0'  # Sunday 10pm UTC (before Saturday discover-repos at 11pm)
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Restore state DB
+        uses: actions/cache/restore@v4
+        id: cache-restore
+        with:
+          path: state.db
+          key: github-star-state-v1-${{ github.run_id }}
+          restore-keys: github-star-state-v1-
+
+      - name: Recover DB from backup branch (cache miss)
+        if: steps.cache-restore.outputs.cache-hit != 'true'
+        run: |
+          git fetch origin state-backup 2>/dev/null && \
+          git checkout origin/state-backup -- state.db 2>/dev/null || true
+
+      - name: Probe Ollama Models
+        id: probe
+        env:
+          OLLAMA_API_KEY: ${{ secrets.OLLAMA_API_KEY }}
+        run: python probe_ollama_models.py
+
+      - name: Save state DB to cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: state.db
+          key: github-star-state-v1-${{ github.run_id }}
+
+      - name: Backup DB to state-backup branch
+        run: |
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git fetch origin state-backup 2>/dev/null || true
+          if git ls-remote --exit-code origin state-backup 2>/dev/null; then
+            git checkout state-backup
+          else
+            git checkout --orphan state-backup
+            git rm -rf . 2>/dev/null || true
+          fi
+          cp ${{ github.workspace }}/state.db state.db 2>/dev/null || true
+          git add state.db
+          git diff --cached --quiet || git commit -m "Ollama probe state backup $(date -u +%Y-%m-%d)"
+          git push origin state-backup
+
+      - name: Report Summary
+        if: always()
+        env:
+          MODELS_PROBED: ${{ steps.probe.outputs.models_probed }}
+          NEW_MODELS: ${{ steps.probe.outputs.new_models }}
+          TRANSITIONED_TO_FREE: ${{ steps.probe.outputs.transitioned_to_free }}
+          SUBSCRIPTION_GATED: ${{ steps.probe.outputs.subscription_gated }}
+        run: |
+          echo "Models probed: $MODELS_PROBED"
+          echo "New models seeded: $NEW_MODELS"
+          echo "Transitioned to free: $TRANSITIONED_TO_FREE"
+          echo "Subscription-gated: $SUBSCRIPTION_GATED"

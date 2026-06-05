@@ -28,10 +28,13 @@ class TestInitDb:
         """Verify init_db creates all required tables."""
         state_db.init_db()
 
-        with sqlite3.connect(temp_db) as conn:
+        conn = sqlite3.connect(temp_db)
+        try:
             cursor = conn.cursor()
             cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
             tables = {row[0] for row in cursor.fetchall()}
+        finally:
+            conn.close()
 
         assert "discovered_repos" in tables
         assert "uncategorized_repos" in tables
@@ -42,10 +45,13 @@ class TestInitDb:
         state_db.init_db()
         state_db.init_db()
 
-        with sqlite3.connect(temp_db) as conn:
+        conn = sqlite3.connect(temp_db)
+        try:
             cursor = conn.cursor()
             cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
             tables = {row[0] for row in cursor.fetchall()}
+        finally:
+            conn.close()
 
         assert len(tables) == 3
 
@@ -174,12 +180,15 @@ class TestDiscoveredRepos:
 
         state_db.insert_discovered_repo(repo, model_summaries, "100")
 
-        with sqlite3.connect(temp_db) as conn:
-            conn.row_factory = sqlite3.Row
+        conn = sqlite3.connect(temp_db)
+        conn.row_factory = sqlite3.Row
+        try:
             row = conn.execute(
                 "SELECT * FROM discovered_repos WHERE name_with_owner = ?",
                 ("owner/repo",),
             ).fetchone()
+        finally:
+            conn.close()
 
         assert row["deepseek_purpose"] == "Build things"
         assert row["deepseek_use_case"] == "Development"
@@ -206,12 +215,15 @@ class TestDiscoveredRepos:
 
         state_db.insert_discovered_repo(repo, model_summaries, "101")
 
-        with sqlite3.connect(temp_db) as conn:
-            conn.row_factory = sqlite3.Row
+        conn = sqlite3.connect(temp_db)
+        conn.row_factory = sqlite3.Row
+        try:
             row = conn.execute(
                 "SELECT * FROM discovered_repos WHERE name_with_owner = ?",
                 ("owner/repo",),
             ).fetchone()
+        finally:
+            conn.close()
 
         assert row["ollama_purpose"] == "Analyze data"
         assert row["ollama_use_case"] == "Analysis"
@@ -335,12 +347,15 @@ class TestUncategorizedRepos:
 
         state_db.insert_uncategorized_repos(repos, "2000")
 
-        with sqlite3.connect(temp_db) as conn:
-            conn.row_factory = sqlite3.Row
+        conn = sqlite3.connect(temp_db)
+        conn.row_factory = sqlite3.Row
+        try:
             row = conn.execute(
                 "SELECT issue_number FROM uncategorized_repos WHERE name_with_owner = ?",
                 ("owner/repo",),
             ).fetchone()
+        finally:
+            conn.close()
 
         assert row["issue_number"] == "2000"
 

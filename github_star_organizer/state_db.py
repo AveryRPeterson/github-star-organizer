@@ -193,6 +193,32 @@ def record_ollama_model_metric(
             conn.execute(sql, (datetime.date.today().isoformat(), model_name))
 
 
+def get_all_known_ollama_models() -> list[str]:
+    """Return all model names tracked in the metrics table."""
+    with _conn() as conn:
+        rows = conn.execute("SELECT model_name FROM ollama_model_metrics").fetchall()
+    return [row[0] for row in rows]
+
+
+def reset_subscription_metrics(model_name: str) -> None:
+    """
+    Reset 403/subscription counts for a model that has transitioned from paid to free.
+    Subtracts subscription_403_count from client_4xx_count then zeroes subscription_403_count.
+    Non-subscription quality signals (success, empty, timeout, hallucination) are preserved.
+    """
+    with _conn() as conn:
+        conn.execute(
+            """
+            UPDATE ollama_model_metrics
+            SET client_4xx_count = MAX(0, client_4xx_count - subscription_403_count),
+                subscription_403_count = 0,
+                last_updated = ?
+            WHERE model_name = ?
+            """,
+            (datetime.date.today().isoformat(), model_name),
+        )
+
+
 def get_sorted_ollama_models(base_models: list[str]) -> list[str]:
     """
     Sort curated Ollama models by reliability metrics.
