@@ -143,7 +143,7 @@ def is_categorized(repo):
     return categorize(repo) is not None
 
 
-def identify_interesting_repos(repos: list[dict], model: str = "deepseek", current_stars: set[str] | None = None, count: int = 3) -> list[str] | None:
+def identify_interesting_repos(repos: list[dict], model: str = "deepseek", current_stars: set[str] | None = None, count: int = 3, candidate_names: set[str] | None = None) -> list[str] | None:
     """
     Ask an LLM to identify unique/strange repos from a list.
     Returns list of nameWithOwner strings for the interesting repos.
@@ -153,6 +153,7 @@ def identify_interesting_repos(repos: list[dict], model: str = "deepseek", curre
         model: "deepseek" or "ollama"
         current_stars: Set of repos already starred by user (to exclude from suggestions)
         count: Number of repos to identify
+        candidate_names: If provided, Ollama will retry with next model when all results are out of scope
 
     Returns:
         List of nameWithOwner strings for interesting repos, or None on error
@@ -195,7 +196,7 @@ Repositories to analyze:
     if model == "deepseek":
         return _identify_via_deepseek(user_prompt)
     else:
-        return _identify_via_ollama(user_prompt)
+        return _identify_via_ollama(user_prompt, candidate_names=candidate_names)
 
 
 def _identify_via_deepseek(prompt: str) -> list[str] | None:
@@ -289,20 +290,31 @@ def get_available_ollama_models(api_key: str) -> list[str] | None:
     return sorted_models if sorted_models else None
 
 
-def _identify_via_ollama(prompt: str) -> list[str] | None:
-    """Call Ollama to identify interesting repos with dynamic model discovery and fallback to DeepSeek"""
+def _identify_via_ollama(prompt: str, candidate_names: set[str] | None = None, max_models: int = 3) -> list[str] | None:
+    """Call Ollama to identify interesting repos, iterating models until in-scope results found.
+
+    Args:
+        candidate_names: If provided, returned repos not in this set are filtered out.
+                         If a model's entire result is out-of-scope, the next model is tried.
+                         Does not count against a model's quality metrics (the model worked fine).
+        max_models: Maximum number of models to try before giving up.
+    """
     api_key = os.getenv("OLLAMA_API_KEY")
     if not api_key:
         logger.warning("OLLAMA_API_KEY not set, falling back to DeepSeek")
-        return _identify_via_deepseek(prompt)
+        return None
 
     # Dynamically discover available models
     available_models = get_available_ollama_models(api_key)
     if not available_models:
         logger.warning("No available Ollama models, falling back to DeepSeek")
-        return _identify_via_deepseek(prompt)
+        return None
 
+    models_tried = 0
     for model in available_models:
+        if models_tried >= max_models:
+            logger.info(f"Reached {max_models}-model Ollama limit, falling back to DeepSeek")
+            break
         try:
             logger.info(f"Trying Ollama with model: {model}")
             response = requests.post(
@@ -326,6 +338,7 @@ def _identify_via_ollama(prompt: str) -> list[str] | None:
             )
 
             if response.status_code == 200:
+                models_tried += 1
                 result = response.json()
                 content = result.get("message", {}).get("content", "")
                 if not content:
@@ -335,37 +348,52 @@ def _identify_via_ollama(prompt: str) -> list[str] | None:
                 try:
                     parsed = json.loads(content)
                     repos = parsed.get("interesting_repos", [])
-                    if repos:
-                        logger.info(f"Ollama {model} successful")
-                        state_db.record_ollama_model_metric(model, success=True)
-                        return repos
-                    else:
+                    if not repos:
                         logger.warning(f"Ollama {model} returned empty interesting_repos list")
                         state_db.record_ollama_model_metric(model, empty_json=True)
                         continue
+                    if candidate_names is not None:
+                        in_scope = [r for r in repos if r in candidate_names]
+                        out_of_scope = [r for r in repos if r not in candidate_names]
+                        if out_of_scope:
+                            logger.info(f"Ollama {model} returned {len(out_of_scope)} out-of-scope repo(s) (already starred/discovered): {out_of_scope}")
+                        if not in_scope:
+                            logger.info(f"Ollama {model} returned only out-of-scope repos, trying next model ({models_tried}/{max_models})")
+                            state_db.record_ollama_model_metric(model, success=True)
+                            continue
+                        logger.info(f"Ollama {model} successful")
+                        state_db.record_ollama_model_metric(model, success=True)
+                        return in_scope
+                    else:
+                        logger.info(f"Ollama {model} successful")
+                        state_db.record_ollama_model_metric(model, success=True)
+                        return repos
                 except json.JSONDecodeError:
                     logger.warning(f"Ollama {model} returned invalid JSON: {content[:200]!r}")
                     state_db.record_ollama_model_metric(model, invalid_json=True)
                     continue
             elif response.status_code == 403:
+                models_tried += 1
                 logger.warning(f"Ollama {model} not accessible (subscription required or no access)")
                 state_db.record_ollama_model_metric(model, status_code=403)
                 continue
             else:
+                models_tried += 1
                 logger.warning(f"Ollama {model} API error: {response.status_code} — {response.text[:200]}")
                 state_db.record_ollama_model_metric(model, status_code=response.status_code)
         except requests.Timeout:
+            models_tried += 1
             logger.warning(f"Ollama {model} request timed out")
             state_db.record_ollama_model_metric(model, timeout=True)
             continue
         except requests.RequestException as e:
+            models_tried += 1
             logger.warning(f"Ollama {model} request failed: {e}")
             state_db.record_ollama_model_metric(model, timeout=isinstance(e, requests.Timeout))
             continue
 
-    # All Ollama models exhausted, fall back to DeepSeek
-    logger.warning("All Ollama models exhausted, falling back to DeepSeek")
-    return _identify_via_deepseek(prompt)
+    # All attempts exhausted without in-scope results
+    return None
 
 
 def call_deepseek_summaries(repos: list[dict]) -> dict[str, dict] | None:
@@ -603,36 +631,22 @@ def identify_and_summarize_interesting(repos: list[dict], current_stars: set[str
 
     logger.info(f"Identifying {total} interesting repos from {len(repos)} candidates")
 
-    # Identify interesting repos using single provider (Ollama primary, DeepSeek fallback)
-    interesting_names = identify_interesting_repos(repos, model="ollama", current_stars=current_stars, count=total)
+    candidate_names = {r["nameWithOwner"] for r in repos}
+
+    # Try Ollama first (up to 3 models); each model retries internally if it returns only out-of-scope repos
+    interesting_names = identify_interesting_repos(repos, model="ollama", current_stars=current_stars, count=total, candidate_names=candidate_names)
     if not interesting_names:
-        logger.warning("Ollama identification failed, trying DeepSeek")
+        logger.info("Ollama identification exhausted, falling back to DeepSeek")
         interesting_names = identify_interesting_repos(repos, model="deepseek", current_stars=current_stars, count=total)
 
     if not interesting_names:
-        logger.warning("No interesting repos identified")
+        logger.warning("No interesting repos identified by any provider")
         return None
 
     logger.info(f"Identified {len(interesting_names)} interesting repos: {interesting_names}")
 
-    # Filter to selected repos (in original order), validating against candidate list
-    candidate_names = {r["nameWithOwner"] for r in repos}
-    selected_set = set(interesting_names)
-    out_of_scope = selected_set - candidate_names
-    if out_of_scope:
-        logger.info(f"Model returned {len(out_of_scope)} repo(s) outside candidate list (already starred/discovered): {out_of_scope}")
-    selected_repos = [r for r in repos if r["nameWithOwner"] in selected_set]
+    selected_repos = [r for r in repos if r["nameWithOwner"] in set(interesting_names)]
     logger.info(f"Selected {len(selected_repos)} repos for detailed analysis")
-
-    if not selected_repos:
-        logger.info("No repos from initial selection are in the candidate list, falling back to DeepSeek")
-        interesting_names = identify_interesting_repos(repos, model="deepseek", current_stars=current_stars, count=total)
-        if not interesting_names:
-            logger.warning("DeepSeek fallback identification also failed")
-            return None
-        logger.info(f"DeepSeek identified {len(interesting_names)} repos: {interesting_names}")
-        selected_repos = [r for r in repos if r["nameWithOwner"] in set(interesting_names)]
-        logger.info(f"Selected {len(selected_repos)} repos for detailed analysis after fallback")
 
     # Generate summaries using single provider (Ollama primary, DeepSeek fallback)
     summaries = get_single_model_summaries(selected_repos)
