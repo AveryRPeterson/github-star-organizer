@@ -643,6 +643,10 @@ def identify_and_summarize_interesting(repos: list[dict], current_stars: set[str
         logger.warning("No interesting repos identified by any provider")
         return None
 
+    if len(interesting_names) > total:
+        logger.info(f"Model returned {len(interesting_names)} repos, truncating to {total}")
+        interesting_names = interesting_names[:total]
+
     logger.info(f"Identified {len(interesting_names)} interesting repos: {interesting_names}")
 
     selected_repos = [r for r in repos if r["nameWithOwner"] in set(interesting_names)]
