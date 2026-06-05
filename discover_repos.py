@@ -618,16 +618,14 @@ def identify_and_summarize_interesting(repos: list[dict], current_stars: set[str
     # Filter to selected repos (in original order), validating against candidate list
     candidate_names = {r["nameWithOwner"] for r in repos}
     selected_set = set(interesting_names)
-    hallucinated = selected_set - candidate_names
-    if hallucinated:
-        logger.warning(f"Model returned {len(hallucinated)} repo(s) not in candidate list (hallucinated): {hallucinated}")
-        # Record hallucination metrics for the model that was used
-        # Note: we need to track which model was used in identify_interesting_repos
+    out_of_scope = selected_set - candidate_names
+    if out_of_scope:
+        logger.info(f"Model returned {len(out_of_scope)} repo(s) outside candidate list (already starred/discovered): {out_of_scope}")
     selected_repos = [r for r in repos if r["nameWithOwner"] in selected_set]
     logger.info(f"Selected {len(selected_repos)} repos for detailed analysis")
 
     if not selected_repos:
-        logger.warning("No valid repos selected (all returned names were hallucinated or not in candidate list), falling back to DeepSeek")
+        logger.info("No repos from initial selection are in the candidate list, falling back to DeepSeek")
         interesting_names = identify_interesting_repos(repos, model="deepseek", current_stars=current_stars, count=total)
         if not interesting_names:
             logger.warning("DeepSeek fallback identification also failed")
