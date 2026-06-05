@@ -429,3 +429,83 @@ class TestMixedOperations:
 
         assert len(discovered) == 5
         assert len(uncategorized) == 5
+
+
+class TestOllamaModelMetrics:
+    def test_record_success(self, temp_db):
+        state_db.init_db()
+        state_db.record_ollama_model_metric("model-a", success=True)
+
+        result = state_db.get_sorted_ollama_models(["model-a"])
+        assert result == ["model-a"]
+
+    def test_sorted_by_score_descending(self, temp_db):
+        """Model with more successes should rank higher."""
+        state_db.init_db()
+        state_db.record_ollama_model_metric("low", success=True)
+        state_db.record_ollama_model_metric("high", success=True)
+        state_db.record_ollama_model_metric("high", success=True)
+
+        result = state_db.get_sorted_ollama_models(["low", "high"])
+        assert result[0] == "high"
+
+    def test_unknown_models_appear_last(self, temp_db):
+        """Models with no history go after ranked models."""
+        state_db.init_db()
+        state_db.record_ollama_model_metric("known", success=True)
+
+        result = state_db.get_sorted_ollama_models(["unknown", "known"])
+        assert result[0] == "known"
+        assert result[1] == "unknown"
+
+    def test_subscription_gated_excluded_by_default(self, temp_db):
+        """Models with >= threshold 403s and no successes are skipped."""
+        state_db.init_db()
+        for _ in range(state_db.SUBSCRIPTION_SKIP_THRESHOLD):
+            state_db.record_ollama_model_metric("gated", status_code=403)
+        state_db.record_ollama_model_metric("free", success=True)
+
+        result = state_db.get_sorted_ollama_models(["gated", "free"])
+        assert "gated" not in result
+        assert "free" in result
+
+    def test_subscription_gated_included_when_skip_false(self, temp_db):
+        """skip_gated=False includes all models regardless of 403 history."""
+        state_db.init_db()
+        for _ in range(state_db.SUBSCRIPTION_SKIP_THRESHOLD):
+            state_db.record_ollama_model_metric("gated", status_code=403)
+
+        result = state_db.get_sorted_ollama_models(["gated"], skip_gated=False)
+        assert "gated" in result
+
+    def test_model_with_403s_but_also_successes_not_skipped(self, temp_db):
+        """A model that had 403s but also succeeds is not treated as gated."""
+        state_db.init_db()
+        for _ in range(state_db.SUBSCRIPTION_SKIP_THRESHOLD):
+            state_db.record_ollama_model_metric("mixed", status_code=403)
+        state_db.record_ollama_model_metric("mixed", success=True)
+
+        result = state_db.get_sorted_ollama_models(["mixed"])
+        assert "mixed" in result
+
+    def test_reset_subscription_metrics(self, temp_db):
+        """reset_subscription_metrics zeroes 403 counts and adjusts client_4xx."""
+        state_db.init_db()
+        for _ in range(4):
+            state_db.record_ollama_model_metric("model", status_code=403)
+
+        state_db.reset_subscription_metrics("model")
+
+        # After reset the model should no longer be gated
+        result = state_db.get_sorted_ollama_models(["model"])
+        assert "model" in result
+
+    def test_get_all_known_ollama_models(self, temp_db):
+        state_db.init_db()
+        state_db.record_ollama_model_metric("alpha", success=True)
+        state_db.record_ollama_model_metric("beta", timeout=True)
+
+        known = state_db.get_all_known_ollama_models()
+        assert "alpha" in known
+        assert "beta" in known
+        assert len(known) == 2

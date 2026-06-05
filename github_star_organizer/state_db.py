@@ -219,7 +219,10 @@ def reset_subscription_metrics(model_name: str) -> None:
         )
 
 
-def get_sorted_ollama_models(base_models: list[str]) -> list[str]:
+SUBSCRIPTION_SKIP_THRESHOLD = 3
+
+
+def get_sorted_ollama_models(base_models: list[str], skip_gated: bool = True) -> list[str]:
     """
     Sort curated Ollama models by reliability metrics.
 
@@ -229,6 +232,11 @@ def get_sorted_ollama_models(base_models: list[str]) -> list[str]:
 
     Models with no metrics (newly added) appear at the end to try them.
     Returns the reordered list with highest-scoring (most reliable) first.
+
+    When skip_gated=True (default), models with subscription_403_count >=
+    SUBSCRIPTION_SKIP_THRESHOLD and no successes are excluded entirely.
+    The weekly probe workflow re-evaluates them and resets metrics if they
+    become free.
     """
     with _conn() as conn:
         rows = conn.execute(
@@ -240,10 +248,18 @@ def get_sorted_ollama_models(base_models: list[str]) -> list[str]:
 
     metrics_dict = {row["model_name"]: dict(row) for row in rows}
 
+    def is_subscription_gated(model_name: str) -> bool:
+        if model_name not in metrics_dict:
+            return False
+        m = metrics_dict[model_name]
+        return (
+            (m["subscription_403_count"] or 0) >= SUBSCRIPTION_SKIP_THRESHOLD
+            and (m["success_200_count"] or 0) == 0
+        )
+
     def score_model(model_name: str) -> tuple:
         """Return (has_metrics, score) for sorting."""
         if model_name not in metrics_dict:
-            # New models with no history go to the end but maintain their position
             return (False, 0)
 
         m = metrics_dict[model_name]
@@ -259,6 +275,9 @@ def get_sorted_ollama_models(base_models: list[str]) -> list[str]:
         )
         return (True, score)
 
-    # Sort: models with metrics first (by score descending), then new models
-    sorted_models = sorted(base_models, key=score_model, reverse=True)
-    return sorted_models
+    candidates = (
+        [m for m in base_models if not is_subscription_gated(m)]
+        if skip_gated
+        else base_models
+    )
+    return sorted(candidates, key=score_model, reverse=True)

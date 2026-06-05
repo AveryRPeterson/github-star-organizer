@@ -280,10 +280,13 @@ def get_available_ollama_models(api_key: str) -> list[str] | None:
         "rnj-1:8b",              # Small, specialized
     ]
 
-    # Sort by historical metrics
-    sorted_models = state_db.get_sorted_ollama_models(base_models)
+    # Sort by historical metrics; skip known-subscription-gated models
+    sorted_models = state_db.get_sorted_ollama_models(base_models, skip_gated=True)
+    skipped = [m for m in base_models if m not in sorted_models]
+    if skipped:
+        logger.info(f"Skipping {len(skipped)} subscription-gated model(s) (re-probed on weekly run): {skipped}")
     logger.info(f"Using curated working models (sorted by reliability): {sorted_models}")
-    return sorted_models
+    return sorted_models if sorted_models else None
 
 
 def _identify_via_ollama(prompt: str) -> list[str] | None:
