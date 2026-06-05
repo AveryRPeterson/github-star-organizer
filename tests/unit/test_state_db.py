@@ -25,28 +25,35 @@ def temp_db(monkeypatch):
 
 class TestInitDb:
     def test_init_db_creates_tables(self, temp_db):
-        """Verify init_db creates both required tables."""
+        """Verify init_db creates all required tables."""
         state_db.init_db()
 
-        with sqlite3.connect(temp_db) as conn:
+        conn = sqlite3.connect(temp_db)
+        try:
             cursor = conn.cursor()
             cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
             tables = {row[0] for row in cursor.fetchall()}
+        finally:
+            conn.close()
 
         assert "discovered_repos" in tables
         assert "uncategorized_repos" in tables
+        assert "ollama_model_metrics" in tables
 
     def test_init_db_idempotent(self, temp_db):
         """Verify init_db can be called multiple times without error."""
         state_db.init_db()
         state_db.init_db()
 
-        with sqlite3.connect(temp_db) as conn:
+        conn = sqlite3.connect(temp_db)
+        try:
             cursor = conn.cursor()
             cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
             tables = {row[0] for row in cursor.fetchall()}
+        finally:
+            conn.close()
 
-        assert len(tables) == 2
+        assert len(tables) == 3
 
 
 class TestDiscoveredRepos:
@@ -173,12 +180,15 @@ class TestDiscoveredRepos:
 
         state_db.insert_discovered_repo(repo, model_summaries, "100")
 
-        with sqlite3.connect(temp_db) as conn:
-            conn.row_factory = sqlite3.Row
+        conn = sqlite3.connect(temp_db)
+        conn.row_factory = sqlite3.Row
+        try:
             row = conn.execute(
                 "SELECT * FROM discovered_repos WHERE name_with_owner = ?",
                 ("owner/repo",),
             ).fetchone()
+        finally:
+            conn.close()
 
         assert row["deepseek_purpose"] == "Build things"
         assert row["deepseek_use_case"] == "Development"
@@ -205,12 +215,15 @@ class TestDiscoveredRepos:
 
         state_db.insert_discovered_repo(repo, model_summaries, "101")
 
-        with sqlite3.connect(temp_db) as conn:
-            conn.row_factory = sqlite3.Row
+        conn = sqlite3.connect(temp_db)
+        conn.row_factory = sqlite3.Row
+        try:
             row = conn.execute(
                 "SELECT * FROM discovered_repos WHERE name_with_owner = ?",
                 ("owner/repo",),
             ).fetchone()
+        finally:
+            conn.close()
 
         assert row["ollama_purpose"] == "Analyze data"
         assert row["ollama_use_case"] == "Analysis"
@@ -334,12 +347,15 @@ class TestUncategorizedRepos:
 
         state_db.insert_uncategorized_repos(repos, "2000")
 
-        with sqlite3.connect(temp_db) as conn:
-            conn.row_factory = sqlite3.Row
+        conn = sqlite3.connect(temp_db)
+        conn.row_factory = sqlite3.Row
+        try:
             row = conn.execute(
                 "SELECT issue_number FROM uncategorized_repos WHERE name_with_owner = ?",
                 ("owner/repo",),
             ).fetchone()
+        finally:
+            conn.close()
 
         assert row["issue_number"] == "2000"
 
@@ -413,3 +429,106 @@ class TestMixedOperations:
 
         assert len(discovered) == 5
         assert len(uncategorized) == 5
+
+
+class TestOllamaModelMetrics:
+    def test_record_success(self, temp_db):
+        state_db.init_db()
+        state_db.record_ollama_model_metric("model-a", success=True)
+
+        result = state_db.get_sorted_ollama_models(["model-a"])
+        assert result == ["model-a"]
+
+    def test_sorted_by_score_descending(self, temp_db):
+        """Model with more successes should rank higher."""
+        state_db.init_db()
+        state_db.record_ollama_model_metric("low", success=True)
+        state_db.record_ollama_model_metric("high", success=True)
+        state_db.record_ollama_model_metric("high", success=True)
+
+        result = state_db.get_sorted_ollama_models(["low", "high"])
+        assert result[0] == "high"
+
+    def test_unknown_models_appear_last(self, temp_db):
+        """Models with no history go after ranked models."""
+        state_db.init_db()
+        state_db.record_ollama_model_metric("known", success=True)
+
+        result = state_db.get_sorted_ollama_models(["unknown", "known"])
+        assert result[0] == "known"
+        assert result[1] == "unknown"
+
+    def test_subscription_gated_excluded_by_default(self, temp_db):
+        """Models with >= threshold 403s and no successes are skipped."""
+        state_db.init_db()
+        for _ in range(state_db.SUBSCRIPTION_SKIP_THRESHOLD):
+            state_db.record_ollama_model_metric("gated", status_code=403)
+        state_db.record_ollama_model_metric("free", success=True)
+
+        result = state_db.get_sorted_ollama_models(["gated", "free"])
+        assert "gated" not in result
+        assert "free" in result
+
+    def test_subscription_gated_included_when_skip_false(self, temp_db):
+        """skip_gated=False includes all models regardless of 403 history."""
+        state_db.init_db()
+        for _ in range(state_db.SUBSCRIPTION_SKIP_THRESHOLD):
+            state_db.record_ollama_model_metric("gated", status_code=403)
+
+        result = state_db.get_sorted_ollama_models(["gated"], skip_gated=False)
+        assert "gated" in result
+
+    def test_model_with_403s_but_also_successes_not_skipped(self, temp_db):
+        """A model that had 403s but also succeeds is not treated as gated."""
+        state_db.init_db()
+        for _ in range(state_db.SUBSCRIPTION_SKIP_THRESHOLD):
+            state_db.record_ollama_model_metric("mixed", status_code=403)
+        state_db.record_ollama_model_metric("mixed", success=True)
+
+        result = state_db.get_sorted_ollama_models(["mixed"])
+        assert "mixed" in result
+
+    def test_reset_subscription_metrics(self, temp_db):
+        """reset_subscription_metrics zeroes 403 counts and adjusts client_4xx."""
+        state_db.init_db()
+        for _ in range(4):
+            state_db.record_ollama_model_metric("model", status_code=403)
+
+        state_db.reset_subscription_metrics("model")
+
+        # After reset the model should no longer be gated
+        result = state_db.get_sorted_ollama_models(["model"])
+        assert "model" in result
+
+    def test_get_all_known_ollama_models(self, temp_db):
+        state_db.init_db()
+        state_db.record_ollama_model_metric("alpha", success=True)
+        state_db.record_ollama_model_metric("beta", timeout=True)
+
+        known = state_db.get_all_known_ollama_models()
+        assert "alpha" in known
+        assert "beta" in known
+        assert len(known) == 2
+
+    def test_out_of_scope_metric_recorded(self, temp_db):
+        """Verify out_of_scope metric is recorded and affects scoring."""
+        state_db.init_db()
+        state_db.record_ollama_model_metric("model-a", success=True)
+        state_db.record_ollama_model_metric("model-b", out_of_scope=True)
+
+        # model-a has 100 points, model-b has -8 points
+        result = state_db.get_sorted_ollama_models(["model-a", "model-b"])
+        assert result[0] == "model-a"
+        assert result[1] == "model-b"
+
+    def test_out_of_scope_models_pushed_down_with_multiple_failures(self, temp_db):
+        """Model with multiple out-of-scope results ranks below reliable models."""
+        state_db.init_db()
+        state_db.record_ollama_model_metric("reliable", success=True)
+        state_db.record_ollama_model_metric("reliable", success=True)
+        for _ in range(5):
+            state_db.record_ollama_model_metric("redundant", out_of_scope=True)
+
+        result = state_db.get_sorted_ollama_models(["reliable", "redundant"])
+        assert result[0] == "reliable"
+        assert result[1] == "redundant"
