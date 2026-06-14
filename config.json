@@ -10,7 +10,8 @@
     "Education & Textbooks": "",
     "Quantum Computing": "",
     "Document Management": "",
-    "Decentralized & Blockchain": ""
+    "Decentralized & Blockchain": "",
+    "Ecosystems & Concept": ""
   },
   "keywords": {
     "AI Agents & LLMs": [
@@ -174,8 +175,7 @@
       "education",
       "\u6559\u6750",
       "course",
-      "learning",
-      "textbook"
+      "learning"
     ],
     "Quantum Computing": [
       "quantum",
@@ -197,6 +197,11 @@
       "social",
       "network",
       "node"
+    ],
+    "Ecosystems & Concept": [
+      "ecoverse",
+      "ecosystem",
+      "eco"
     ]
   }
 }
