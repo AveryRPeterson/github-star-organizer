@@ -72,15 +72,27 @@ def call_deepseek(prompt):
     }
 
     try:
-        response = requests.post(url, headers=headers, json=data)
+        response = requests.post(url, headers=headers, json=data, timeout=60)
         if response.status_code == 200:
             return response.json()['choices'][0]['message']['content']
         else:
             logger.error(f"DeepSeek API Error: {response.status_code}")
             return None
+    except requests.exceptions.Timeout:
+        logger.error("DeepSeek API call timed out")
+        return None
     except Exception as e:
         logger.error(f"Failed to call DeepSeek: {e}")
         return None
+
+
+def write_outputs(summary, date_suffix="", issue_num=""):
+    """Write step outputs for GitHub Actions."""
+    if "GITHUB_OUTPUT" in os.environ:
+        with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+            f.write(f"date_suffix={date_suffix}\n")
+            f.write(f"issue_num={issue_num}\n")
+            f.write(f"summary={json.dumps(summary)}\n")
 
 
 def main():
@@ -90,6 +102,7 @@ def main():
         issue = get_latest_uncategorized_issue()
         if not issue:
             logger.info("No open uncategorized issues found")
+            write_outputs({"status": "skipped", "reason": "no_open_issue"})
             return
 
         issue_number = issue["number"]
@@ -98,6 +111,7 @@ def main():
         comments = get_issue_comments(issue_number)
         if not comments:
             logger.info("No comments found in the issue")
+            write_outputs({"status": "skipped", "reason": "no_comments"}, issue_num=issue_number)
             return
 
         with open("config.json", "r") as f:
@@ -158,27 +172,18 @@ Return ONLY the complete updated `config.json` object.
                 issue_title = issue.get("title", "")
                 date_suffix = issue_title.split(": ")[-1] if ": " in issue_title else ""
 
-                # Write outputs for GitHub Actions
-                if "GITHUB_OUTPUT" in os.environ:
-                    with open(os.environ["GITHUB_OUTPUT"], "a") as f:
-                        f.write(f"date_suffix={date_suffix}\n")
-                        f.write(f"issue_num={issue_number}\n")
-                        f.write(f"summary={json.dumps(summary)}\n")
+                write_outputs(summary, date_suffix=date_suffix, issue_num=issue_number)
 
             except json.JSONDecodeError as e:
                 logger.error(f"Failed to parse DeepSeek response: {e}")
                 summary["status"] = "failed"
                 summary["error"] = str(e)
-                if "GITHUB_OUTPUT" in os.environ:
-                    with open(os.environ["GITHUB_OUTPUT"], "a") as f:
-                        f.write(f"summary={json.dumps(summary)}\n")
+                write_outputs(summary, issue_num=issue_number)
         else:
             logger.error("Failed to get response from DeepSeek")
             summary["status"] = "failed"
             summary["error"] = "DeepSeek API failed"
-            if "GITHUB_OUTPUT" in os.environ:
-                with open(os.environ["GITHUB_OUTPUT"], "a") as f:
-                    f.write(f"summary={json.dumps(summary)}\n")
+            write_outputs(summary, issue_num=issue_number)
 
     except Exception as e:
         logger.error(f"Distillation failed: {e}")
