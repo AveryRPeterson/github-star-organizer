@@ -14,9 +14,14 @@ on:
         type: number
         default: 5
 
+concurrency:
+  group: discover-repos
+  cancel-in-progress: false
+
 jobs:
   discover-repos:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     permissions:
@@ -29,6 +34,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.x'
+          cache: 'pip'
 
       - name: Install dependencies
         run: pip install -r requirements.txt
