@@ -7,8 +7,6 @@ from github_star_organizer.gh_client import GitHubClient, GitHubAPIError
 from github_star_organizer.categorizer import categorize
 from github_star_organizer.logger import get_logger
 from github_star_organizer.issue_manager import (
-    get_or_create_weekly_issue,
-    report_uncategorized_repos,
     create_discovery_issue,
     augment_discovery_issue,
     IssueError,
@@ -740,15 +738,10 @@ def main():
         logger.info(f"Stage 1: {len(new_uncategorized)} new uncategorized repos for keywords")
         logger.info(f"Stage 2: {len(new_all_repos)} new repos available for interesting selection")
 
-        # Report uncategorized repos (Stage 1) — only create issue when there's something new
+        # Record uncategorized repos (Stage 1) for later distillation
         if new_uncategorized:
-            issue_num = get_or_create_weekly_issue(client, create=False)
-            if not issue_num:
-                issue_num = get_or_create_weekly_issue(client, create=True)
-            if issue_num:
-                report_uncategorized_repos(client, issue_num, new_uncategorized)
-                state_db.insert_uncategorized_repos(new_uncategorized, issue_num)
-                logger.info(f"Reported {len(new_uncategorized)} repos to uncategorized issue #{issue_num}")
+            state_db.insert_uncategorized_repos(new_uncategorized)
+            logger.info(f"Recorded {len(new_uncategorized)} new uncategorized repos for distillation")
 
         # Two-stage discovery: identify interesting repos, then summarize (Stage 2 + 3)
         discovery_count = int(os.environ.get("DISCOVERY_COUNT", "13"))

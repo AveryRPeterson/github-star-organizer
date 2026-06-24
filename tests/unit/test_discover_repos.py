@@ -331,8 +331,6 @@ class TestIdentifyAndSummarizeInteresting:
 
 
 class TestDiscoverReposMain:
-    @patch("discover_repos.report_uncategorized_repos")
-    @patch("discover_repos.get_or_create_weekly_issue")
     @patch("discover_repos.state_db")
     @patch("discover_repos.search_popular_repos")
     @patch("discover_repos.get_current_stars")
@@ -343,8 +341,6 @@ class TestDiscoverReposMain:
         mock_stars,
         mock_search,
         mock_db,
-        mock_get_issue,
-        mock_report,
     ):
         mock_client_class.return_value = MagicMock()
         mock_stars.return_value = set()
@@ -365,14 +361,13 @@ class TestDiscoverReposMain:
         mock_db.get_uncategorized_repos.return_value = set()
         mock_db.get_discovered_repos.return_value = set()
         mock_db.get_issue_number_for_discovered.return_value = None
-        mock_get_issue.return_value = "123"
 
         with patch("discover_repos.is_categorized", return_value=False):
             with patch("discover_repos.identify_and_summarize_interesting", return_value=None):
                 discover_repos.main()
 
-        # Should still report uncategorized even if discovery fails
-        mock_report.assert_called_once()
+        # Should still record uncategorized even if discovery fails
+        mock_db.insert_uncategorized_repos.assert_called_once()
 
     @patch("discover_repos.state_db")
     @patch("discover_repos.GitHubClient")
@@ -405,8 +400,6 @@ class TestDiscoverReposMain:
                 # identify_and_summarize_interesting may still be called for interesting selection
 
     @patch("builtins.open", new_callable=mock_open)
-    @patch("discover_repos.report_uncategorized_repos")
-    @patch("discover_repos.get_or_create_weekly_issue")
     @patch("discover_repos.state_db")
     @patch("discover_repos.search_popular_repos")
     @patch("discover_repos.get_current_stars")
@@ -417,8 +410,6 @@ class TestDiscoverReposMain:
         mock_stars,
         mock_search,
         mock_db,
-        mock_get_issue,
-        mock_report,
         mock_file,
     ):
         mock_client_class.return_value = MagicMock()
@@ -440,7 +431,6 @@ class TestDiscoverReposMain:
         mock_db.get_uncategorized_repos.return_value = set()
         mock_db.get_discovered_repos.return_value = set()
         mock_db.get_issue_number_for_discovered.return_value = None
-        mock_get_issue.return_value = "123"
 
         with patch.dict(os.environ, {"GITHUB_OUTPUT": "/tmp/output"}):
             with patch("discover_repos.is_categorized", return_value=False):

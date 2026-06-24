@@ -6,9 +6,7 @@ A GitHub Actions workflow system that automatically discovers, categorizes, and 
 
 - **Discover Interesting Repos**: Dual-model AI analysis (DeepSeek + Ollama) identifies 13 unique repositories per week that are unusual, innovative, or solve problems in creative ways
 - **Keyword-Based Categorization**: Automatically categorizes repositories by topic using configurable keywords
-- **Weekly Organization**: Creates GitHub issues for:
-  - Uncategorized popular repositories (for keyword growth)
-  - Interesting discoveries with AI-generated summaries
+- **Weekly Organization**: Creates GitHub issues for interesting discoveries with AI-generated summaries; uncategorized popular repositories are tracked in a local state DB (no issue/comment noise) for later keyword-growth distillation
 - **Smart Deduplication**: Removes already-starred repos and previously flagged discoveries to prevent redundant suggestions
 
 ## Workflows
@@ -17,7 +15,7 @@ A GitHub Actions workflow system that automatically discovers, categorizes, and 
 Runs weekly (Saturdays 11pm UTC) to discover new interesting repositories:
 1. Fetches popular repos from GitHub (created after 2023, 1000+ stars)
 2. Splits into uncategorized (Stage 1) and categorized (Stage 2+3)
-3. Reports new uncategorized repos for keyword expansion
+3. Records new uncategorized repos in the state DB for keyword expansion
 4. Uses DeepSeek and Ollama to identify 13 interesting repos per run
 5. Creates GitHub issues with AI-generated summaries
 
@@ -27,7 +25,8 @@ Runs weekly (Saturdays 11pm UTC) to discover new interesting repositories:
 Automatically stars/unstarred repos based on discovery issue state
 
 ### distill.py
-Consolidates weekly discoveries into permanent category files
+Reads pending uncategorized repos from the state DB and uses DeepSeek to
+suggest `config.json` keyword/category updates, opening a PR with the result
 
 ## Configuration
 
@@ -58,7 +57,8 @@ python -m pytest tests/unit/ -v
 ├── github_star_organizer/  # Main package
 │   ├── categorizer.py      # Category matching logic
 │   ├── gh_client.py        # GitHub GraphQL client
-│   └── issue_manager.py    # Issue creation/parsing
+│   ├── issue_manager.py    # Discovery issue creation
+│   └── state_db.py         # SQLite state (dedup, uncategorized tracking)
 ├── discover_repos.py       # Main discovery workflow
 ├── distill.py              # Category consolidation
 ├── config.json             # Configuration

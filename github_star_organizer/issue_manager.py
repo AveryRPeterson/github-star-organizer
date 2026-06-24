@@ -1,8 +1,6 @@
 import subprocess
 import json
 import datetime
-import re
-from typing import Set
 
 
 class IssueError(Exception):
@@ -90,90 +88,6 @@ def _get_or_create_weekly_issue(
             pass
 
     return target_issue_num
-
-
-def get_or_create_weekly_issue(client, create: bool = True) -> str | None:
-    """
-    Get or create the weekly uncategorized stars tracking issue.
-
-    - Searches for all open "Uncategorized Stars" issues (authored by user)
-    - Returns the target issue for this week (by date)
-    - Closes and consolidates duplicate issues from prior weeks
-
-    Args:
-        client: GitHubClient instance
-        create: If False, return None when no issue exists rather than creating one
-
-    Returns:
-        Issue number as string, or None if creation fails or create=False and no issue exists
-
-    Raises:
-        IssueError: If issue operations fail
-    """
-    body = "This issue tracks repositories that were skipped during the organization run because they did not match any existing keywords. Comments below contain batches of uncategorized repositories."
-    return _get_or_create_weekly_issue(
-        client,
-        title_prefix="Uncategorized Stars",
-        body=body,
-        error_msg_prefix="Failed to create issue",
-        create=create,
-    )
-
-
-def get_already_reported_repos(client, issue_number: str) -> Set[str]:
-    """
-    Extract repository names already mentioned in an issue's comments.
-
-    Parses markdown format: "- **owner/repo**"
-
-    Args:
-        client: GitHubClient instance (not used, kept for API consistency)
-        issue_number: GitHub issue number
-
-    Returns:
-        Set of "owner/repo" strings already reported
-    """
-    try:
-        res = run_command(["gh", "issue", "view", issue_number,
-                          "--json", "comments", "-q", ".comments[].body"])
-    except IssueError:
-        return set()
-
-    # Extract nameWithOwner using regex from markdown list items
-    # Looking for lines like "- **user/repo**"
-    reported = set()
-    matches = re.findall(r"- \*\*([^*]+)\*\*", res)
-    for match in matches:
-        reported.add(match)
-
-    return reported
-
-
-def report_uncategorized_repos(client, issue_number: str, repos: list[dict]) -> None:
-    """
-    Post a comment with uncategorized repositories to an issue.
-
-    Args:
-        client: GitHubClient instance (not used, kept for API consistency)
-        issue_number: GitHub issue number
-        repos: List of repository dicts (nameWithOwner, description, repositoryTopics)
-
-    Raises:
-        IssueError: If comment posting fails
-    """
-    if not repos or not issue_number:
-        return
-
-    comment_body = "### New Uncategorized Repositories\n\n"
-    for r in repos:
-        topics = ", ".join([t["topic"]["name"] for t in r.get("repositoryTopics", {}).get("nodes", [])])
-        desc = r.get('description') or "No description"
-        comment_body += f"- **{r['nameWithOwner']}**\n  - Description: {desc}\n  - Topics: {topics}\n\n"
-
-    try:
-        run_command(["gh", "issue", "comment", issue_number, "--body", comment_body])
-    except IssueError as e:
-        raise IssueError(f"Failed to post comment to issue #{issue_number}: {e}")
 
 
 def close_issue(client, issue_number: str, reason: str) -> None:

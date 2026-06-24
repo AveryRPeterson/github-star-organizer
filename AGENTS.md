@@ -96,21 +96,27 @@ Before pushing changes:
 - **Why:** Internal code already validated by tests
 - **How to apply:** Use custom exceptions (IssueError, GitHubAPIError); log and fail gracefully
 
-## Discovery Dedupe Pattern (2026-05-05)
+## Discovery Dedupe Pattern (2026-05-05, updated 2026-06-24)
 
 When the discovery workflow runs multiple times, duplicates appear because:
 - LLM can pick the same repos in different runs
-- Repos previously reported in earlier comments can be picked again
+- Repos previously seen in earlier runs can be picked again
+
+Uncategorized-repo and discovered-repo tracking is `state_db`-backed (not
+issue/comment-backed) — see `state_db.get_uncategorized_repos()` and
+`state_db.get_discovered_repos()`. This removed an entire class of
+duplicate-comment bugs (see #122/#152) since there's no comment history to
+parse or fall out of sync with.
 
 **Solution (most compute efficient):**
 
 1. **Primary dedupe (before LLM):** Filter out repos already starred by user
    - Fetch once per run in `get_current_stars()`
    - O(n) set lookup during filtering
-   
-2. **Secondary dedupe (after LLM, optional):** Filter selected repos against prior comments
-   - Already in `already_discovered` set from `get_already_reported_repos()`
-   - Only needed if LLM selection might overlap with historic comments
+
+2. **Secondary dedupe (after LLM, optional):** Filter selected repos against
+   `state_db.get_discovered_repos()` (`already_discovered`)
+   - Only needed if LLM selection might overlap with previously discovered repos
 
 Example in `discover_repos.py`:
 ```python

@@ -2,11 +2,7 @@
 import sys
 from github_star_organizer.gh_client import GitHubClient, GitHubAPIError
 from github_star_organizer.categorizer import categorize, get_categorized_ids, get_recent_stars
-from github_star_organizer.issue_manager import (
-    get_or_create_weekly_issue,
-    report_uncategorized_repos,
-    IssueError
-)
+from github_star_organizer.issue_manager import IssueError
 from github_star_organizer.logger import get_logger
 from github_star_organizer.config import load_config, ConfigError
 from github_star_organizer import state_db
@@ -79,7 +75,7 @@ def main():
             else:
                 logger.info(f"Skipping {repo['nameWithOwner']} (already categorized)")
 
-        # Report uncategorized repos — only create/comment when genuinely new
+        # Record uncategorized repos — only insert when genuinely new
         if skipped_repos:
             logger.info(f"Found {len(skipped_repos)} uncategorized repos, checking against state DB...")
             already_reported = state_db.get_uncategorized_repos()
@@ -87,14 +83,8 @@ def main():
                              if r['nameWithOwner'] not in already_reported]
 
             if new_to_report:
-                logger.info(f"Reporting {len(new_to_report)} new uncategorized repos...")
-                issue_num = get_or_create_weekly_issue(client, create=False)
-                if not issue_num:
-                    issue_num = get_or_create_weekly_issue(client, create=True)
-                if issue_num:
-                    report_uncategorized_repos(client, issue_num, new_to_report)
-                    state_db.insert_uncategorized_repos(new_to_report, issue_num)
-                    logger.info(f"Comment added to issue #{issue_num}")
+                state_db.insert_uncategorized_repos(new_to_report)
+                logger.info(f"Recorded {len(new_to_report)} new uncategorized repos for distillation")
             else:
                 logger.info("No new uncategorized repos to report")
 

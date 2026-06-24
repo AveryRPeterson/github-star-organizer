@@ -11,12 +11,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from github_star_organizer.gh_client import GitHubClient, GitHubAPIError
 from github_star_organizer.categorizer import categorize, get_categorized_ids, get_recent_stars
-from github_star_organizer.issue_manager import (
-    get_or_create_weekly_issue,
-    get_already_reported_repos,
-    report_uncategorized_repos,
-    IssueError
-)
+from github_star_organizer.issue_manager import IssueError
 from github_star_organizer.config import load_config, ConfigError
 from github_star_organizer.logger import get_logger
 
@@ -144,112 +139,6 @@ class TestCategorizeWithSkipped(unittest.TestCase):
         self.assertEqual(skipped[0]["nameWithOwner"], "myorg/xyz-project")
 
 
-class TestIssueManagementWorkflow(unittest.TestCase):
-    """Integration tests for issue management workflow."""
-
-    @patch("github_star_organizer.issue_manager.run_command")
-    def test_get_or_create_weekly_issue_new(self, mock_run_command):
-        """Test creating a new weekly issue when none exists"""
-        # Mock: no existing issues
-        mock_run_command.side_effect = [
-            "[]",  # No existing issues
-            "https://github.com/user/repo/issues/42"  # Created issue URL
-        ]
-
-        client = MagicMock()
-        issue_num = get_or_create_weekly_issue(client)
-
-        self.assertEqual(issue_num, "42")
-
-    @patch("github_star_organizer.issue_manager.datetime")
-    @patch("github_star_organizer.issue_manager.run_command")
-    def test_get_or_create_weekly_issue_exists(self, mock_run_command, mock_datetime):
-        """Test retrieving existing weekly issue"""
-        # Mock: existing issue for this week (week 18)
-        import datetime as dt
-        mock_datetime.date.today.return_value = dt.date(2026, 4, 27)  # Week 18
-
-        mock_run_command.return_value = '''[
-          {
-            "number": 42,
-            "title": "Uncategorized Stars: 2026-W18"
-          }
-        ]'''
-
-        client = MagicMock()
-        issue_num = get_or_create_weekly_issue(client)
-
-        self.assertEqual(issue_num, "42")
-
-    @patch("github_star_organizer.issue_manager.run_command")
-    def test_get_or_create_weekly_issue_closes_old(self, mock_run_command):
-        """Test that old issues are closed when new one is created"""
-        # Mock: old issue exists
-        mock_run_command.side_effect = [
-            '''[
-              {
-                "number": 40,
-                "title": "Uncategorized Stars: 2026-W16"
-              }
-            ]''',
-            "https://github.com/user/repo/issues/42",  # New issue created
-            "",  # Comment added
-            ""   # Issue closed
-        ]
-
-        client = MagicMock()
-        issue_num = get_or_create_weekly_issue(client)
-
-        self.assertEqual(issue_num, "42")
-        # Verify that close was called (3rd call is comment, 4th is close)
-        self.assertEqual(mock_run_command.call_count, 4)
-
-
-class TestReportUncategorizedWorkflow(unittest.TestCase):
-    """Integration tests for reporting uncategorized repos."""
-
-    @patch("github_star_organizer.issue_manager.run_command")
-    def test_report_uncategorized_repos(self, mock_run_command):
-        """Test posting uncategorized repos to an issue"""
-        mock_run_command.return_value = ""
-
-        repos = [
-            {
-                "nameWithOwner": "user/project1",
-                "description": "A cool project",
-                "repositoryTopics": {"nodes": [{"topic": {"name": "python"}}]}
-            },
-            {
-                "nameWithOwner": "user/project2",
-                "description": "Another project",
-                "repositoryTopics": {"nodes": []}
-            }
-        ]
-
-        client = MagicMock()
-        # Should not raise
-        report_uncategorized_repos(client, "42", repos)
-
-        # Verify run_command was called to post comment
-        self.assertTrue(mock_run_command.called)
-
-    @patch("github_star_organizer.issue_manager.run_command")
-    def test_get_already_reported_repos(self, mock_run_command):
-        """Test extracting repo names from issue comments"""
-        mock_run_command.return_value = '''- **user/reported-1**
-- **user/reported-2**
-Some other text
-- **user/reported-3**'''
-
-        client = MagicMock()
-        reported = get_already_reported_repos(client, "42")
-
-        self.assertEqual(len(reported), 3)
-        self.assertIn("user/reported-1", reported)
-        self.assertIn("user/reported-2", reported)
-        self.assertIn("user/reported-3", reported)
-
-
 class TestConfigValidation(unittest.TestCase):
     """Integration tests for configuration loading."""
 
@@ -307,7 +196,7 @@ class TestPackageImports(unittest.TestCase):
         self.assertTrue(hasattr(config, 'ConfigError'))
         self.assertTrue(hasattr(config, 'load_config'))
         self.assertTrue(hasattr(issue_manager, 'IssueError'))
-        self.assertTrue(hasattr(issue_manager, 'get_or_create_weekly_issue'))
+        self.assertTrue(hasattr(issue_manager, 'get_or_create_weekly_discovery_issue'))
 
     def test_logger_factory(self):
         """Test that logger can be created for different modules"""
