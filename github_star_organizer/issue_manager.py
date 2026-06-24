@@ -18,16 +18,21 @@ def run_command(cmd: list[str]) -> str:
     return result.stdout.strip()
 
 
-def get_or_create_weekly_issue(client, create: bool = True) -> str | None:
+def _get_or_create_weekly_issue(
+    client, title_prefix: str, body: str, error_msg_prefix: str, create: bool = True
+) -> str | None:
     """
-    Get or create the weekly uncategorized stars tracking issue.
+    Common logic for creating and managing weekly tracking issues.
 
-    - Searches for all open "Uncategorized Stars" issues (authored by user)
+    - Searches for all open issues with the given title prefix (authored by user)
     - Returns the target issue for this week (by date)
     - Closes and consolidates duplicate issues from prior weeks
 
     Args:
         client: GitHubClient instance
+        title_prefix: Prefix for the issue title (e.g., "Uncategorized Stars")
+        body: Initial body text for the new issue
+        error_msg_prefix: Prefix for the IssueError if creation fails
         create: If False, return None when no issue exists rather than creating one
 
     Returns:
@@ -37,12 +42,12 @@ def get_or_create_weekly_issue(client, create: bool = True) -> str | None:
         IssueError: If issue operations fail
     """
     date_str = datetime.date.today().strftime("%Y-W%V")
-    target_title = f"Uncategorized Stars: {date_str}"
+    target_title = f"{title_prefix}: {date_str}"
 
-    # 1. Find all open uncategorized issues authored by me
+    # 1. Find all open issues with the given prefix authored by me
     try:
         res = run_command(["gh", "issue", "list", "--state", "open",
-                          "--search", 'in:title "Uncategorized Stars" author:@me',
+                          "--search", f'in:title "{title_prefix}" author:@me',
                           "--json", "number,title"])
         open_issues = json.loads(res) if res else []
         if not isinstance(open_issues, list):
@@ -69,11 +74,10 @@ def get_or_create_weekly_issue(client, create: bool = True) -> str | None:
         if not create:
             return None
         try:
-            body = "This issue tracks repositories that were skipped during the organization run because they did not match any existing keywords. Comments below contain batches of uncategorized repositories."
             url = run_command(["gh", "issue", "create", "--title", target_title, "--body", body])
             target_issue_num = url.split("/")[-1]
         except IssueError as e:
-            raise IssueError(f"Failed to create issue: {e}")
+            raise IssueError(f"{error_msg_prefix}: {e}")
 
     # 3. Close old issues, pointing them to the new target issue
     for old_issue_num in old_issues:
@@ -86,6 +90,34 @@ def get_or_create_weekly_issue(client, create: bool = True) -> str | None:
             pass
 
     return target_issue_num
+
+
+def get_or_create_weekly_issue(client, create: bool = True) -> str | None:
+    """
+    Get or create the weekly uncategorized stars tracking issue.
+
+    - Searches for all open "Uncategorized Stars" issues (authored by user)
+    - Returns the target issue for this week (by date)
+    - Closes and consolidates duplicate issues from prior weeks
+
+    Args:
+        client: GitHubClient instance
+        create: If False, return None when no issue exists rather than creating one
+
+    Returns:
+        Issue number as string, or None if creation fails or create=False and no issue exists
+
+    Raises:
+        IssueError: If issue operations fail
+    """
+    body = "This issue tracks repositories that were skipped during the organization run because they did not match any existing keywords. Comments below contain batches of uncategorized repositories."
+    return _get_or_create_weekly_issue(
+        client,
+        title_prefix="Uncategorized Stars",
+        body=body,
+        error_msg_prefix="Failed to create issue",
+        create=create,
+    )
 
 
 def get_already_reported_repos(client, issue_number: str) -> Set[str]:
@@ -181,48 +213,13 @@ def get_or_create_weekly_discovery_issue(client) -> str | None:
     Raises:
         IssueError: If issue operations fail
     """
-    date_str = datetime.date.today().strftime("%Y-W%V")
-    target_title = f"Interesting Discoveries: {date_str}"
-
-    try:
-        res = run_command(["gh", "issue", "list", "--state", "open",
-                          "--search", 'in:title "Interesting Discoveries" author:@me',
-                          "--json", "number,title"])
-        open_issues = json.loads(res) if res else []
-        if not isinstance(open_issues, list):
-            open_issues = []
-    except (json.JSONDecodeError, IssueError):
-        open_issues = []
-
-    target_issue_num = None
-    old_issues = []
-
-    for issue in open_issues:
-        if issue["title"] == target_title:
-            if not target_issue_num:
-                target_issue_num = str(issue["number"])
-            else:
-                old_issues.append(str(issue["number"]))
-        else:
-            old_issues.append(str(issue["number"]))
-
-    if not target_issue_num:
-        try:
-            body = "This issue tracks AI-generated summaries of popular uncategorized repositories discovered this week. Review the repos below, star any that interest you, then close this issue."
-            url = run_command(["gh", "issue", "create", "--title", target_title, "--body", body])
-            target_issue_num = url.split("/")[-1]
-        except IssueError as e:
-            raise IssueError(f"Failed to create discovery issue: {e}")
-
-    for old_issue_num in old_issues:
-        try:
-            comment = f"A new weekly issue has been created: #{target_issue_num}. Closing this older tracking issue."
-            run_command(["gh", "issue", "comment", old_issue_num, "--body", comment])
-            run_command(["gh", "issue", "close", old_issue_num, "--reason", "not planned"])
-        except IssueError:
-            pass
-
-    return target_issue_num
+    body = "This issue tracks AI-generated summaries of popular uncategorized repositories discovered this week. Review the repos below, star any that interest you, then close this issue."
+    return _get_or_create_weekly_issue(
+        client,
+        title_prefix="Interesting Discoveries",
+        body=body,
+        error_msg_prefix="Failed to create discovery issue",
+    )
 
 
 def create_discovery_issue(repo: dict, model_summaries: dict) -> str:
