@@ -118,7 +118,27 @@ def get_uncategorized_repos() -> set[str]:
     return {row[0] for row in rows}
 
 
-def insert_uncategorized_repos(repos: list[dict], issue_number: str) -> None:
+def get_uncategorized_repos_full() -> list[dict]:
+    """Return all pending uncategorized repos with their stored metadata."""
+    with _conn() as conn:
+        rows = conn.execute(
+            "SELECT name_with_owner, description, topics FROM uncategorized_repos"
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def clear_uncategorized_repos(names: list[str]) -> None:
+    """Remove repos from the pending table once they've been distilled into config.json."""
+    if not names:
+        return
+    with _conn() as conn:
+        conn.executemany(
+            "DELETE FROM uncategorized_repos WHERE name_with_owner = ?",
+            [(name,) for name in names],
+        )
+
+
+def insert_uncategorized_repos(repos: list[dict]) -> None:
     today = datetime.date.today().isoformat()
     with _conn() as conn:
         for repo in repos:
@@ -128,15 +148,14 @@ def insert_uncategorized_repos(repos: list[dict], issue_number: str) -> None:
             conn.execute(
                 """
                 INSERT OR IGNORE INTO uncategorized_repos
-                (name_with_owner, description, topics, reported_at, issue_number)
-                VALUES (?, ?, ?, ?, ?)
+                (name_with_owner, description, topics, reported_at)
+                VALUES (?, ?, ?, ?)
                 """,
                 (
                     repo["nameWithOwner"],
                     repo.get("description"),
                     topics,
                     today,
-                    issue_number,
                 ),
             )
 

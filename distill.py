@@ -2,52 +2,24 @@
 import os
 import sys
 import json
+import datetime
 import requests
-import subprocess
 from github_star_organizer.logger import get_logger
-from github_star_organizer.gh_client import GitHubClient, GitHubAPIError
+from github_star_organizer import state_db
 
 
 logger = get_logger("distill")
 
 
-def run_command(cmd):
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    if result.returncode != 0:
-        logger.error(f"Command failed: {result.stderr}")
-        return None
-    return result.stdout.strip()
-
-
-def get_latest_uncategorized_issue():
-    """Find the most recent open uncategorized stars issue"""
-    try:
-        res = run_command(["gh", "issue", "list", "--state", "open",
-                          "--search", "Uncategorized Stars in:title author:@me",
-                          "--json", "number,body,title", "--limit", "1"])
-        if not res or res == "[]":
-            return None
-        return json.loads(res)[0]
-    except Exception as e:
-        logger.error(f"Failed to fetch issue: {e}")
-        return None
-
-
-def get_issue_comments(issue_number):
-    """Get comments from an issue (only from owner)"""
-    try:
-        user = run_command(["gh", "api", "user", "-q", ".login"])
-        if not user:
-            logger.error("Could not determine current user")
-            return ""
-
-        res = run_command(["gh", "issue", "view", str(issue_number),
-                          "--json", "comments",
-                          "-q", f'.comments[] | select(.author.login == "{user}") | .body'])
-        return res if res else ""
-    except Exception as e:
-        logger.error(f"Failed to get comments: {e}")
-        return ""
+def format_uncategorized_repos(repos):
+    """Render pending uncategorized repos in the same markdown format
+    previously posted as GitHub issue comments, for the DeepSeek prompt."""
+    body = ""
+    for r in repos:
+        desc = r.get("description") or "No description"
+        topics = r.get("topics") or ""
+        body += f"- **{r['name_with_owner']}**\n  - Description: {desc}\n  - Topics: {topics}\n\n"
+    return body
 
 
 def call_deepseek(prompt):
@@ -86,7 +58,7 @@ def call_deepseek(prompt):
         return None
 
 
-def write_outputs(summary, date_suffix="", issue_num=""):
+def write_outputs(summary, date_suffix=""):
     """Write step outputs for GitHub Actions."""
     if "GITHUB_OUTPUT" not in os.environ:
         return
@@ -95,7 +67,6 @@ def write_outputs(summary, date_suffix="", issue_num=""):
     )
     with open(os.environ["GITHUB_OUTPUT"], "a") as f:
         f.write(f"date_suffix={date_suffix}\n")
-        f.write(f"issue_num={issue_num}\n")
         f.write(f"summary={json.dumps(summary)}\n")
         f.write(f"has_changes={'true' if has_changes else 'false'}\n")
 
@@ -103,21 +74,18 @@ def write_outputs(summary, date_suffix="", issue_num=""):
 def main():
     try:
         logger.info("Starting distillation...")
+        state_db.init_db()
 
-        issue = get_latest_uncategorized_issue()
-        if not issue:
-            logger.info("No open uncategorized issues found")
-            write_outputs({"status": "skipped", "reason": "no_open_issue"})
+        date_suffix = datetime.date.today().strftime("%Y-W%V")
+
+        pending = state_db.get_uncategorized_repos_full()
+        if not pending:
+            logger.info("No pending uncategorized repos to distill")
+            write_outputs({"status": "skipped", "reason": "no_pending_repos"}, date_suffix=date_suffix)
             return
 
-        issue_number = issue["number"]
-        logger.info(f"Found uncategorized issue #{issue_number}")
-
-        comments = get_issue_comments(issue_number)
-        if not comments:
-            logger.info("No comments found in the issue")
-            write_outputs({"status": "skipped", "reason": "no_comments"}, issue_num=issue_number)
-            return
+        logger.info(f"Found {len(pending)} pending uncategorized repos")
+        comments = format_uncategorized_repos(pending)
 
         with open("config.json", "r") as f:
             config = json.load(f)
@@ -128,7 +96,7 @@ Analyze the following uncategorized GitHub repositories and suggest updates to t
 Current config.json:
 {json.dumps(config, indent=2)}
 
-New uncategorized repositories (from issue comments):
+New uncategorized repositories:
 {comments}
 
 Instructions:
@@ -142,12 +110,12 @@ Instructions:
 Return ONLY the complete updated `config.json` object.
 """
 
-        logger.info(f"Analyzing {len(comments)} characters of uncategorized repos via DeepSeek...")
+        logger.info(f"Analyzing {len(pending)} uncategorized repos via DeepSeek...")
         new_config_json = call_deepseek(prompt)
 
         summary = {
             "status": "success",
-            "repos_analyzed": 0,
+            "repos_analyzed": len(pending),
             "new_keywords_added": 0,
             "new_categories": 0
         }
@@ -173,22 +141,21 @@ Return ONLY the complete updated `config.json` object.
                     json.dump(new_config, f, indent=2)
                 logger.info("config.json has been updated")
 
-                # Extract date from issue title
-                issue_title = issue.get("title", "")
-                date_suffix = issue_title.split(": ")[-1] if ": " in issue_title else ""
+                state_db.clear_uncategorized_repos([r["name_with_owner"] for r in pending])
+                logger.info(f"Cleared {len(pending)} distilled repos from state DB")
 
-                write_outputs(summary, date_suffix=date_suffix, issue_num=issue_number)
+                write_outputs(summary, date_suffix=date_suffix)
 
             except json.JSONDecodeError as e:
                 logger.error(f"Failed to parse DeepSeek response: {e}")
                 summary["status"] = "failed"
                 summary["error"] = str(e)
-                write_outputs(summary, issue_num=issue_number)
+                write_outputs(summary, date_suffix=date_suffix)
         else:
             logger.error("Failed to get response from DeepSeek")
             summary["status"] = "failed"
             summary["error"] = "DeepSeek API failed"
-            write_outputs(summary, issue_num=issue_number)
+            write_outputs(summary, date_suffix=date_suffix)
 
     except Exception as e:
         logger.error(f"Distillation failed: {e}")

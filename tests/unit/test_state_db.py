@@ -254,7 +254,7 @@ class TestUncategorizedRepos:
             },
         ]
 
-        state_db.insert_uncategorized_repos(repos, "999")
+        state_db.insert_uncategorized_repos(repos)
         result = state_db.get_uncategorized_repos()
 
         assert "owner/uncategorized1" in result
@@ -278,7 +278,7 @@ class TestUncategorizedRepos:
             }
         ]
 
-        state_db.insert_uncategorized_repos(repos, "1000")
+        state_db.insert_uncategorized_repos(repos)
         result = state_db.get_uncategorized_repos()
 
         assert "owner/repo" in result
@@ -286,7 +286,7 @@ class TestUncategorizedRepos:
     def test_insert_uncategorized_repos_empty_list(self, temp_db):
         """Verify insert_uncategorized_repos handles empty list."""
         state_db.init_db()
-        state_db.insert_uncategorized_repos([], "1001")
+        state_db.insert_uncategorized_repos([])
         result = state_db.get_uncategorized_repos()
         assert result == set()
 
@@ -309,8 +309,8 @@ class TestUncategorizedRepos:
             }
         ]
 
-        state_db.insert_uncategorized_repos(repos1, "1")
-        state_db.insert_uncategorized_repos(repos2, "2")
+        state_db.insert_uncategorized_repos(repos1)
+        state_db.insert_uncategorized_repos(repos2)
 
         result = state_db.get_uncategorized_repos()
         assert len(result) == 2
@@ -327,37 +327,56 @@ class TestUncategorizedRepos:
             }
         ]
 
-        state_db.insert_uncategorized_repos(repos, "1")
-        state_db.insert_uncategorized_repos(repos, "2")
+        state_db.insert_uncategorized_repos(repos)
+        state_db.insert_uncategorized_repos(repos)
 
         result = state_db.get_uncategorized_repos()
         assert len(result) == 1
 
-    def test_insert_uncategorized_repos_stores_issue_number(self, temp_db):
-        """Verify insert_uncategorized_repos stores issue number."""
+    def test_get_uncategorized_repos_full(self, temp_db):
+        """Verify get_uncategorized_repos_full returns full repo metadata."""
         state_db.init_db()
 
         repos = [
             {
                 "nameWithOwner": "owner/repo",
-                "description": "Test",
-                "repositoryTopics": {"nodes": []},
+                "description": "Test description",
+                "repositoryTopics": {"nodes": [{"topic": {"name": "python"}}]},
             }
         ]
+        state_db.insert_uncategorized_repos(repos)
 
-        state_db.insert_uncategorized_repos(repos, "2000")
+        result = state_db.get_uncategorized_repos_full()
+        assert len(result) == 1
+        assert result[0]["name_with_owner"] == "owner/repo"
+        assert result[0]["description"] == "Test description"
+        assert result[0]["topics"] == "python"
 
-        conn = sqlite3.connect(temp_db)
-        conn.row_factory = sqlite3.Row
-        try:
-            row = conn.execute(
-                "SELECT issue_number FROM uncategorized_repos WHERE name_with_owner = ?",
-                ("owner/repo",),
-            ).fetchone()
-        finally:
-            conn.close()
+    def test_clear_uncategorized_repos(self, temp_db):
+        """Verify clear_uncategorized_repos removes the given repos."""
+        state_db.init_db()
 
-        assert row["issue_number"] == "2000"
+        repos = [
+            {"nameWithOwner": "owner/repo1", "description": "1", "repositoryTopics": {"nodes": []}},
+            {"nameWithOwner": "owner/repo2", "description": "2", "repositoryTopics": {"nodes": []}},
+        ]
+        state_db.insert_uncategorized_repos(repos)
+
+        state_db.clear_uncategorized_repos(["owner/repo1"])
+
+        result = state_db.get_uncategorized_repos()
+        assert result == {"owner/repo2"}
+
+    def test_clear_uncategorized_repos_empty_list(self, temp_db):
+        """Verify clear_uncategorized_repos is a no-op for an empty list."""
+        state_db.init_db()
+        repos = [{"nameWithOwner": "owner/repo", "description": "1", "repositoryTopics": {"nodes": []}}]
+        state_db.insert_uncategorized_repos(repos)
+
+        state_db.clear_uncategorized_repos([])
+
+        result = state_db.get_uncategorized_repos()
+        assert result == {"owner/repo"}
 
 
 class TestConnectionErrorHandling:
@@ -392,7 +411,7 @@ class TestMixedOperations:
         }
 
         state_db.insert_discovered_repo(discovered, {}, "1")
-        state_db.insert_uncategorized_repos([uncategorized], "2")
+        state_db.insert_uncategorized_repos([uncategorized])
 
         discovered_set = state_db.get_discovered_repos()
         uncategorized_set = state_db.get_uncategorized_repos()
@@ -422,7 +441,7 @@ class TestMixedOperations:
                     "repositoryTopics": {"nodes": []},
                 }
             ]
-            state_db.insert_uncategorized_repos(repos, f"{i}")
+            state_db.insert_uncategorized_repos(repos)
 
         discovered = state_db.get_discovered_repos()
         uncategorized = state_db.get_uncategorized_repos()
