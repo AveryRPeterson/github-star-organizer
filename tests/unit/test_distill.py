@@ -1,3 +1,4 @@
+import os
 import unittest
 from unittest.mock import patch, MagicMock
 import json
@@ -26,6 +27,7 @@ class TestDistillMain(unittest.TestCase):
         main()
         mock_state_db.clear_uncategorized_repos.assert_not_called()
 
+    @patch.dict(os.environ, {"GITHUB_OUTPUT": "/tmp/fake_github_output"})
     @patch("distill.call_deepseek")
     @patch("builtins.open")
     @patch("distill.state_db")
@@ -39,8 +41,7 @@ class TestDistillMain(unittest.TestCase):
 
         read_handle = MagicMock()
         read_handle.__enter__.return_value.read.return_value = json.dumps(config)
-        write_handle = MagicMock()
-        mock_open.side_effect = [read_handle, write_handle]
+        mock_open.return_value = read_handle
 
         with patch("json.load", return_value=config):
             mock_call_deepseek.return_value = json.dumps(new_config)
