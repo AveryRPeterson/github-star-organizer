@@ -41,7 +41,9 @@
       "foundation-model",
       "financial-markets",
       "rlm",
-      "model-context-protocol"
+      "model-context-protocol",
+      "subnet",
+      "tao-vpsubnet"
     ],
     "Tools & CLI": [
       "cli",
@@ -168,7 +170,8 @@
       "decentralized",
       "social",
       "network",
-      "node"
+      "node",
+      "base-node"
     ],
     "Education & Textbooks": [
       "textbook",
@@ -176,7 +179,10 @@
       "education",
       "\u6559\u6750",
       "course",
-      "learning"
+      "learning",
+      "anki",
+      "mandarin",
+      "pinyin"
     ],
     "Quantum Computing": [
       "quantum",
@@ -202,7 +208,14 @@
     "Ecosystems & Concept": [
       "ecoverse",
       "ecosystem",
-      "eco"
+      "eco",
+      "ruview",
+      "wifi",
+      "spatial-intelligence",
+      "openinterpreter",
+      "natural-language-interface",
+      "opencut",
+      "video-editing"
     ]
   }
 }
