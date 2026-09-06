@@ -43,7 +43,10 @@
       "rlm",
       "model-context-protocol",
       "subnet",
-      "tao-vpsubnet"
+      "tao-vpsubnet",
+      "natural-language-interface",
+      "openinterpreter",
+      "spatial-intelligence"
     ],
     "Tools & CLI": [
       "cli",
@@ -71,7 +74,10 @@
       "opentofu",
       "terraform",
       "n8n",
-      "workflow"
+      "workflow",
+      "magic-wormhole",
+      "file-transfer",
+      "secure-transfer"
     ],
     "Hardware & Keyboards": [
       "keyboard",
@@ -84,7 +90,9 @@
       "firmware",
       "pcb",
       "kicad",
-      "keycap"
+      "keycap",
+      "qidi",
+      "3d-printer"
     ],
     "Android & Termux": [
       "android",
@@ -113,7 +121,9 @@
       "blender",
       "modeling",
       "cnc",
-      "openscad"
+      "openscad",
+      "qidi",
+      "q2"
     ],
     "OS & Customization": [
       "linux",
@@ -171,7 +181,17 @@
       "social",
       "network",
       "node",
-      "base-node"
+      "base-node",
+      "mcp",
+      "servers",
+      "model-context-protocol",
+      "paper",
+      "programming-paradigm",
+      "spatiotemporal",
+      "composability",
+      "x402",
+      "payments",
+      "http"
     ],
     "Education & Textbooks": [
       "textbook",
@@ -182,7 +202,10 @@
       "learning",
       "anki",
       "mandarin",
-      "pinyin"
+      "pinyin",
+      "chinese",
+      "pronunciation",
+      "ipa"
     ],
     "Quantum Computing": [
       "quantum",
@@ -203,7 +226,12 @@
       "blockchain",
       "social",
       "network",
-      "node"
+      "node",
+      "base",
+      "base-node",
+      "x402",
+      "payments",
+      "protocol"
     ],
     "Ecosystems & Concept": [
       "ecoverse",
@@ -215,7 +243,8 @@
       "openinterpreter",
       "natural-language-interface",
       "opencut",
-      "video-editing"
+      "video-editing",
+      "ecoverse-doc"
     ]
   }
 }
