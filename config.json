@@ -43,7 +43,9 @@
       "rlm",
       "model-context-protocol",
       "subnet",
-      "tao-vpsubnet"
+      "tao-vpsubnet",
+      "modelcontextprotocol",
+      "natural-language-interface"
     ],
     "Tools & CLI": [
       "cli",
@@ -71,7 +73,8 @@
       "opentofu",
       "terraform",
       "n8n",
-      "workflow"
+      "workflow",
+      "magic-wormhole"
     ],
     "Hardware & Keyboards": [
       "keyboard",
@@ -84,7 +87,8 @@
       "firmware",
       "pcb",
       "kicad",
-      "keycap"
+      "keycap",
+      "3d-printing"
     ],
     "Android & Termux": [
       "android",
@@ -113,7 +117,8 @@
       "blender",
       "modeling",
       "cnc",
-      "openscad"
+      "openscad",
+      "qidi"
     ],
     "OS & Customization": [
       "linux",
@@ -171,7 +176,9 @@
       "social",
       "network",
       "node",
-      "base-node"
+      "base-node",
+      "shadcn",
+      "spatiotemporal-composability"
     ],
     "Education & Textbooks": [
       "textbook",
@@ -182,7 +189,8 @@
       "learning",
       "anki",
       "mandarin",
-      "pinyin"
+      "pinyin",
+      "ipa"
     ],
     "Quantum Computing": [
       "quantum",
@@ -203,7 +211,9 @@
       "blockchain",
       "social",
       "network",
-      "node"
+      "node",
+      "x402",
+      "payments-protocol"
     ],
     "Ecosystems & Concept": [
       "ecoverse",
