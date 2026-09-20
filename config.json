@@ -42,6 +42,7 @@
       "financial-markets",
       "rlm",
       "model-context-protocol",
+      "model-context-protocol-servers",
       "subnet",
       "tao-vpsubnet"
     ],
@@ -171,7 +172,13 @@
       "social",
       "network",
       "node",
-      "base-node"
+      "base-node",
+      "payments",
+      "payments-protocol",
+      "x402",
+      "magic-wormhole",
+      "spatiotemporal",
+      "composability"
     ],
     "Education & Textbooks": [
       "textbook",
