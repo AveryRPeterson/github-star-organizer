@@ -71,7 +71,12 @@
       "opentofu",
       "terraform",
       "n8n",
-      "workflow"
+      "workflow",
+      "wormhole",
+      "file-transfer",
+      "secure-transfer",
+      "payments",
+      "protocol"
     ],
     "Hardware & Keyboards": [
       "keyboard",
@@ -171,7 +176,15 @@
       "social",
       "network",
       "node",
-      "base-node"
+      "base-node",
+      "component-library",
+      "ui-components",
+      "design-system",
+      "spatiotemporal",
+      "composability",
+      "programming paradigm",
+      "video-editing",
+      "open-source alternative"
     ],
     "Education & Textbooks": [
       "textbook",
