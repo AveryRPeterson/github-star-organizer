@@ -43,7 +43,13 @@
       "rlm",
       "model-context-protocol",
       "subnet",
-      "tao-vpsubnet"
+      "tao-vpsubnet",
+      "modelcontextprotocol",
+      "voice-cloning",
+      "transcription",
+      "tts",
+      "speech-to-text",
+      "dubbing"
     ],
     "Tools & CLI": [
       "cli",
@@ -84,7 +90,8 @@
       "firmware",
       "pcb",
       "kicad",
-      "keycap"
+      "keycap",
+      "3d-printer"
     ],
     "Android & Termux": [
       "android",
@@ -171,7 +178,11 @@
       "social",
       "network",
       "node",
-      "base-node"
+      "base-node",
+      "component-library",
+      "ui-components",
+      "shadcn",
+      "composable"
     ],
     "Education & Textbooks": [
       "textbook",
@@ -203,7 +214,11 @@
       "blockchain",
       "social",
       "network",
-      "node"
+      "node",
+      "payments-protocol",
+      "http-payments",
+      "x402",
+      "base"
     ],
     "Ecosystems & Concept": [
       "ecoverse",
@@ -215,7 +230,15 @@
       "openinterpreter",
       "natural-language-interface",
       "opencut",
-      "video-editing"
+      "video-editing",
+      "spatiotemporal",
+      "composability",
+      "programming-paradigm"
+    ],
+    "File Transfer": [
+      "file-transfer",
+      "magic-wormhole",
+      "secure-transfer"
     ]
   }
 }
