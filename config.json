@@ -11,7 +11,9 @@
     "Quantum Computing": "",
     "Document Management": "",
     "Decentralized & Blockchain": "",
-    "Ecosystems & Concept": ""
+    "Ecosystems & Concept": "",
+    "Payments & Protocols": "",
+    "Spatial & Sensing": ""
   },
   "keywords": {
     "AI Agents & LLMs": [
@@ -43,7 +45,13 @@
       "rlm",
       "model-context-protocol",
       "subnet",
-      "tao-vpsubnet"
+      "tao-vpsubnet",
+      "voice-cloning",
+      "text-to-speech",
+      "tts",
+      "transcription",
+      "dubbing",
+      "natural-language-interface"
     ],
     "Tools & CLI": [
       "cli",
@@ -71,7 +79,9 @@
       "opentofu",
       "terraform",
       "n8n",
-      "workflow"
+      "workflow",
+      "file-transfer",
+      "magic-wormhole"
     ],
     "Hardware & Keyboards": [
       "keyboard",
@@ -171,7 +181,8 @@
       "social",
       "network",
       "node",
-      "base-node"
+      "base-node",
+      "shadcn"
     ],
     "Education & Textbooks": [
       "textbook",
@@ -216,6 +227,20 @@
       "natural-language-interface",
       "opencut",
       "video-editing"
+    ],
+    "Payments & Protocols": [
+      "payments",
+      "payment-protocol",
+      "http-payments",
+      "x402",
+      "micropayments"
+    ],
+    "Spatial & Sensing": [
+      "spatial-intelligence",
+      "wifi-sensing",
+      "vital-sign",
+      "presence-detection",
+      "ruview"
     ]
   }
 }
