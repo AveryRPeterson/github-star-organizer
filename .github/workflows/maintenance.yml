@@ -42,6 +42,17 @@ jobs:
           git fetch origin state-backup 2>/dev/null && \
           git checkout origin/state-backup -- state.db 2>/dev/null || true
 
+      - name: Verify GH_TOKEN
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          if ! gh api user --silent 2>/dev/null; then
+            msg="GH_TOKEN is missing, expired, or invalid. Rotate the GH_TOKEN repository secret."
+            echo "::error title=GH_TOKEN invalid::$msg"
+            echo "### :x: $msg" >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
       - name: Organize Stars
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}

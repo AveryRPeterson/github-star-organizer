@@ -8,6 +8,11 @@ class GitHubAPIError(Exception):
     pass
 
 
+class GitHubAuthError(GitHubAPIError):
+    """Raised when GH_TOKEN is missing, expired, or revoked (HTTP 401)."""
+    pass
+
+
 def run_query(query: str, variables: dict[str, str] | None = None) -> dict:
     """
     Execute a GraphQL query against GitHub API via gh CLI.
@@ -34,6 +39,12 @@ def run_query(query: str, variables: dict[str, str] | None = None) -> dict:
 
     # Check for command failures
     if result.returncode != 0:
+        stderr = result.stderr or ""
+        if "401" in stderr or "Bad credentials" in stderr:
+            raise GitHubAuthError(
+                "GH_TOKEN is expired, revoked, or invalid (HTTP 401). "
+                "Rotate the GH_TOKEN repository secret."
+            )
         raise GitHubAPIError(f"GitHub API error: {result.stderr}")
 
     # Parse JSON response
