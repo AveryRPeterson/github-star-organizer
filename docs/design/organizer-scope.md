@@ -17,11 +17,22 @@ Everything else (trend discovery, lateral-use theorizing, viability) moves to a 
    - `isFork` / `parent { nameWithOwner }`, `isMirror` / `mirrorUrl` via GraphQL.
    - If the canonical (parent/source) repo is already in a list, reuse that list. Forks and
      mirrors should land next to the thing they copy.
-4. **Classify** (cheapest first): canonical's list -> keyword match (`config.json`) -> LLM pick
-   constrained to the existing list names (return a list name or `none`).
-5. **Apply** via `updateUserListsForItem`, **additively**: send the repo's current list IDs plus
+4. **Classify deterministically, no LLM:** canonical's list -> learned-profile match
+   (`matcher.py`). Each list's profile is built from the repos already in it (topics weighted
+   highest), plus the list name and seed keywords from `config.json`. A repo's score is the
+   IDF-weighted share of its tokens that the list profile covers.
+   - The acceptance threshold **falls as the number of lists grows** (`0.45 / (1 + n/6)`, floor
+     0.12): the more lists exist, the harder the matcher tries to reuse one.
+   - Below threshold, the repo is "unplaced".
+5. **New lists, cautiously.** Unplaced repos are grouped by shared topic. A list is created only if
+   (a) at least `3 + n_lists // 10` unplaced repos share the topic, (b) the topic is not already
+   expressed by an existing list name or so common that it carries no signal, and (c) fewer than
+   `MAX_NEW_LIST_PER_WEEK` (default 1) lists were created in the last 7 days (tracked in
+   `state.db.created_lists`). New lists are private. Anything still unplaced goes to
+   `uncategorized_repos`.
+6. **Apply** via `updateUserListsForItem`, **additively**: send the repo's current list IDs plus
    the new one. Never overwrite existing membership.
-6. **Record** unplaceable repos in `state.db.uncategorized_repos` for `distill.py` keyword growth
+7. **Record** unplaceable repos in `state.db.uncategorized_repos` for `distill.py` keyword growth
    (existing behaviour, kept).
 
 ## Bugs to fix on the way (found in review)

@@ -39,6 +39,13 @@ def init_db() -> None:
             )
         """)
         conn.execute("""
+            CREATE TABLE IF NOT EXISTS created_lists (
+                name TEXT PRIMARY KEY,
+                list_id TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )
+        """)
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS uncategorized_repos (
                 name_with_owner TEXT PRIMARY KEY,
                 description TEXT,
@@ -314,3 +321,23 @@ def get_sorted_ollama_models(base_models: list[str], skip_gated: bool = True) ->
         else base_models
     )
     return sorted(candidates, key=score_model, reverse=True)
+
+
+def record_created_list(name: str, list_id: str) -> None:
+    """Remember a Star List this tool created, for the weekly creation cap."""
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    with _conn() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO created_lists (name, list_id, created_at) VALUES (?, ?, ?)",
+            (name, list_id, now),
+        )
+
+
+def count_lists_created_since(days: int = 7) -> int:
+    cutoff = (datetime.datetime.now(datetime.timezone.utc)
+              - datetime.timedelta(days=days)).isoformat()
+    with _conn() as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) FROM created_lists WHERE created_at >= ?", (cutoff,)
+        ).fetchone()
+    return int(row[0])

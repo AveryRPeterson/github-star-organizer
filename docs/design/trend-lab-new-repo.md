@@ -1,8 +1,28 @@
-# New repo design: emerging-repo trends -> lateral use -> product viability
+# gather-volution: discover -> ideate -> pathway to viability
 
-**Date:** 2026-11-15 | **Status:** Design only, no code | **Working name:** TBD (placeholder `repo-trendlab`)
+**Date:** 2026-11-15 | **Status:** Design only, no code | **Name:** `gather-volution` (private repo; name is provisional)
+**Not created yet:** repo creation is outside the session that wrote this; create it empty and copy this file to `docs/DESIGN.md`.
 **Origin:** extracted from `github-star-organizer` (epic #194, issues #195-#201). This file is
 written to be copied into the new repo's `docs/DESIGN.md` unchanged.
+
+## Scope boundary
+
+gather-volution **gathers** repos, products and ideas and carries each one as far as a credible
+*pathway to viability*. It does **not** evolve code. Rigorous, budgeted, ledger-backed evolution of
+a chosen candidate belongs to the sibling project (VerdantRhizome / `strata`, the multi-fidelity
+evaluation layer for program-evolution search). The two meet at a small file contract (see
+"Handoff to strata").
+
+```
+ gather-volution:  trends -> novelty -> mechanism -> lateral ideas -> viability dossier
+                                                                          |
+                                         evolution brief (JSON, one per promoted idea)
+                                                                          v
+ VerdantRhizome / strata:      DesignProblem -> AdapterChain -> TieredEvaluator -> evolved artifact
+```
+
+Rule of thumb: if the work needs a search loop or an oracle budget, it is strata's. If it is
+about *which* thing is worth searching on and *why*, it is ours.
 
 ## Purpose
 
@@ -62,6 +82,34 @@ use), timing, key risk. Deterministic inputs: licence from the API, competitor c
 GitHub search for the capability, last-commit recency, velocity. Ungrounded claims are labelled.
 Verdict: pursue / watch / drop + the one fact that would change it. No LLM TAM estimates.
 
+### Handoff to strata
+Only ideas with verdict `pursue` leave this repo, as one `briefs/<idea_id>.json`:
+
+| Field | Meaning | strata counterpart |
+|---|---|---|
+| `goal`, `sense` | what to optimize, maximize or minimize | `DesignProblem.goal`, `sense` |
+| `end_constraints[]` | hard limits derived from the viability rubric (licence, cost ceiling, safety/boundary notes) | `DesignProblem.constraints`, checked at every tier |
+| `seed_repos[]` | the source repos and their pinned commits | initial candidate pool |
+| `proposed_tiers[]` | cheap-to-expensive checks that could screen a candidate (T0 shape/licence checks, T1 quick prototype or simulation, T2 real-world signal) | `Adapter` fidelity tiers |
+| `budget_hint`, `uncertainty_notes` | what we could not ground | `budget`, `kappa` discussion |
+
+gather-volution never imports strata; the brief is plain JSON so either side can change
+independently. strata's `sketch` "POD niches" domain (cached scores / scoring API / live listing
+performance) is the same shape as a product-viability chain and is the natural first consumer.
+
+### Lessons borrowed from strata (apply to S2 and S5)
+- **Never emit a bare score.** Every novelty and viability score carries `value`, `uncertainty`,
+  `cost` (tokens), `fidelity` (deterministic check vs LLM rubric vs real-world signal), `feasible`
+  and `evaluated_ok`. "Model call failed" must not be recorded as "idea is bad".
+- **Audit the cheap filter.** The novelty and dedupe filters will reject some good repos; sample a
+  few rejections each week and measure the false-rejection rate rather than assuming it is zero.
+- **Winner's curse.** The top idea in a noisy ranking is biased upward; re-score finalists once,
+  independently, before the digest.
+- **Pessimistic when recording, optimistic when spending.** Report verdicts on the lower bound;
+  decide what to investigate further using the upper bound so exploration does not die.
+- **Consult the ledger before paying.** Never re-score an unchanged repo; cache by repo id and
+  content hash.
+
 ### Digest and ledger
 One issue per week (or one rolling issue) with: top by velocity, top novel, top 3 ideas with
 verdicts. History accumulates in `ledger/` (committed JSON or markdown). Never one issue per repo.
@@ -107,7 +155,7 @@ config, `distill.py`.
 
 ## Open questions for the owner
 
-1. Repo name and visibility (public means issues and ledger are public).
+1. ~~Repo name and visibility~~ Decided: private, `gather-volution` (provisional).
 2. Which LLM provider(s) (DeepSeek only, or add Claude for S4/S5 judgment quality)? Cost cap per
    weekly run?
 3. Digest destination: GitHub issue, committed markdown, or both?

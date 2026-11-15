@@ -13,7 +13,7 @@ class GitHubAuthError(GitHubAPIError):
     pass
 
 
-def run_query(query: str, variables: dict[str, str] | None = None) -> dict:
+def run_query(query: str, variables: dict[str, str | list[str]] | None = None) -> dict:
     """
     Execute a GraphQL query against GitHub API via gh CLI.
 
@@ -32,7 +32,11 @@ def run_query(query: str, variables: dict[str, str] | None = None) -> dict:
     # Add variables to command
     if variables:
         for key, value in variables.items():
-            cmd.extend(["-f", f"{key}={value}"])
+            if isinstance(value, (list, tuple)):
+                for item in value:  # gh encodes key[]=v as a JSON array
+                    cmd.extend(["-f", f"{key}[]={item}"])
+            else:
+                cmd.extend(["-f", f"{key}={value}"])
 
     # Execute gh command
     result = subprocess.run(cmd, capture_output=True, text=True)
@@ -57,7 +61,7 @@ def run_query(query: str, variables: dict[str, str] | None = None) -> dict:
 class GitHubClient:
     """Wrapper for GitHub API operations via gh CLI."""
 
-    def run_query(self, query: str, variables: dict[str, str] | None = None) -> dict:
+    def run_query(self, query: str, variables: dict[str, str | list[str]] | None = None) -> dict:
         """
         Execute a GraphQL query against GitHub API.
 

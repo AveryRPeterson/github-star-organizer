@@ -56,6 +56,7 @@ jobs:
       - name: Organize Stars
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          MAX_NEW_LIST_PER_WEEK: ${{ vars.MAX_NEW_LIST_PER_WEEK || '1' }}
         run: python3 categorize.py
 
       - name: Save state DB to cache

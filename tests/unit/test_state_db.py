@@ -53,7 +53,7 @@ class TestInitDb:
         finally:
             conn.close()
 
-        assert len(tables) == 3
+        assert len(tables) == 4
 
 
 class TestDiscoveredRepos:
@@ -551,3 +551,20 @@ class TestOllamaModelMetrics:
         result = state_db.get_sorted_ollama_models(["reliable", "redundant"])
         assert result[0] == "reliable"
         assert result[1] == "redundant"
+
+
+class TestCreatedLists:
+    def test_counts_only_recent(self, temp_db):
+        state_db.init_db()
+        assert state_db.count_lists_created_since(7) == 0
+        state_db.record_created_list("Fresh", "L1")
+        assert state_db.count_lists_created_since(7) == 1
+        with state_db._conn() as conn:
+            conn.execute("UPDATE created_lists SET created_at = '2020-01-01T00:00:00+00:00'")
+        assert state_db.count_lists_created_since(7) == 0
+
+    def test_record_is_idempotent_per_name(self, temp_db):
+        state_db.init_db()
+        state_db.record_created_list("Same", "L1")
+        state_db.record_created_list("Same", "L2")
+        assert state_db.count_lists_created_since(7) == 1

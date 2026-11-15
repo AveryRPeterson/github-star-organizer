@@ -86,3 +86,14 @@ class TestRunQuery(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestListVariables(unittest.TestCase):
+    @patch("subprocess.run")
+    def test_list_values_become_array_args(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=0, stdout="{}", stderr="")
+        run_query("mutation($ids: [ID!]!) { x }", {"ids": ["a", "b"], "n": "1"})
+        cmd = mock_run.call_args[0][0]
+        self.assertIn("ids[]=a", cmd)
+        self.assertIn("ids[]=b", cmd)
+        self.assertIn("n=1", cmd)
