@@ -48,7 +48,8 @@ def run_query(query: str, variables: dict[str, str | list[str]] | None = None) -
 
     # Execute gh command, retrying transient 5xx/timeouts with exponential backoff
     for attempt in range(1, MAX_ATTEMPTS + 1):
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, capture_output=True, text=True,
+                                encoding="utf-8", errors="replace")
         stderr = result.stderr or ""
         if result.returncode == 0 or attempt == MAX_ATTEMPTS or not _TRANSIENT.search(stderr):
             break
