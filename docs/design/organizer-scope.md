@@ -7,7 +7,7 @@
 > Put each starred repo that is **not in any Star List yet** into the most fitting list.
 
 Everything else (trend discovery, lateral-use theorizing, viability) moves to a separate repo
-(see `trend-lab-new-repo.md`). This repo keeps only what serves the one job.
+(now `VerdantRhizome/adaptive-radiation`, private). This repo keeps only what serves the one job.
 
 ## Behaviour
 

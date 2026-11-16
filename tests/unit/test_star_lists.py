@@ -17,24 +17,31 @@ def page(nodes, nxt=None):
 
 
 class TestInventory(unittest.TestCase):
-    def test_paginates_items_past_100(self):
-        first = {"data": {"viewer": {"lists": {
-            "nodes": [{"id": "L1", "name": "A", "items": page([{"id": "r1"}], nxt="c1")}],
-            "pageInfo": {"hasNextPage": False, "endCursor": None}}}}}
-        second = {"data": {"node": {"items": page([{"id": "r2"}, None])}}}
-        inv = sl.fetch_list_inventory(Client([first, second]))
+    def lists(self, nodes, nxt=None):
+        return {"data": {"viewer": {"lists": {"nodes": nodes, "pageInfo": {
+            "hasNextPage": nxt is not None, "endCursor": nxt}}}}}
+
+    def items(self, nodes, nxt=None):
+        return {"data": {"node": {"items": page(nodes, nxt)}}}
+
+    def test_paginates_items_past_one_page(self):
+        c = Client([self.lists([{"id": "L1", "name": "A"}]),
+                    self.items([{"id": "r1"}], nxt="c1"),
+                    self.items([{"id": "r2"}, None])])
+        inv = sl.fetch_list_inventory(c)
         self.assertEqual([r["id"] for r in inv["A"]["members"]], ["r1", "r2"])
+        self.assertEqual(c.calls[2][1], {"listId": "L1", "cursor": "c1"})
 
     def test_paginates_lists(self):
-        p1 = {"data": {"viewer": {"lists": {
-            "nodes": [{"id": "L1", "name": "A", "items": page([])}],
-            "pageInfo": {"hasNextPage": True, "endCursor": "x"}}}}}
-        p2 = {"data": {"viewer": {"lists": {
-            "nodes": [{"id": "L2", "name": "B", "items": page([])}],
-            "pageInfo": {"hasNextPage": False, "endCursor": None}}}}}
-        c = Client([p1, p2])
+        c = Client([self.lists([{"id": "L1", "name": "A"}], nxt="x"), self.items([]),
+                    self.lists([{"id": "L2", "name": "B"}]), self.items([])])
         self.assertEqual(set(sl.fetch_list_inventory(c)), {"A", "B"})
-        self.assertEqual(c.calls[1][1], {"cursor": "x"})
+        self.assertEqual(c.calls[2][1], {"cursor": "x"})
+
+    def test_queries_are_not_nested_lists_by_items(self):
+        # Regression: one query nesting lists x items x topics timed out with HTTP 502.
+        self.assertNotIn("items", sl._LISTS_Q)
+        self.assertNotIn("parent", sl._ITEMS_Q)
 
     def test_bad_response_raises(self):
         from github_star_organizer.gh_client import GitHubAPIError

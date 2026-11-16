@@ -97,3 +97,42 @@ class TestListVariables(unittest.TestCase):
         self.assertIn("ids[]=a", cmd)
         self.assertIn("ids[]=b", cmd)
         self.assertIn("n=1", cmd)
+
+
+class TestRetry(unittest.TestCase):
+    def fail(self, msg):
+        return MagicMock(returncode=1, stdout="", stderr=msg)
+
+    @patch("time.sleep")
+    @patch("subprocess.run")
+    def test_retries_502_then_succeeds(self, mock_run, mock_sleep):
+        mock_run.side_effect = [self.fail("gh: HTTP 502"), self.fail("gh: HTTP 502"),
+                                MagicMock(returncode=0, stdout='{"data": {}}', stderr="")]
+        self.assertEqual(run_query("query { x }"), {"data": {}})
+        self.assertEqual(mock_run.call_count, 3)
+        self.assertEqual([c.args[0] for c in mock_sleep.call_args_list], [2.0, 4.0])
+
+    @patch("time.sleep")
+    @patch("subprocess.run")
+    def test_gives_up_after_max_attempts(self, mock_run, mock_sleep):
+        mock_run.return_value = self.fail("gh: HTTP 502")
+        with self.assertRaises(GitHubAPIError):
+            run_query("query { x }")
+        self.assertEqual(mock_run.call_count, 4)
+
+    @patch("time.sleep")
+    @patch("subprocess.run")
+    def test_does_not_retry_client_errors(self, mock_run, mock_sleep):
+        mock_run.return_value = self.fail("gh: HTTP 422 Unprocessable")
+        with self.assertRaises(GitHubAPIError):
+            run_query("query { x }")
+        self.assertEqual(mock_run.call_count, 1)
+        mock_sleep.assert_not_called()
+
+    @patch("time.sleep")
+    @patch("subprocess.run")
+    def test_auth_error_not_retried(self, mock_run, mock_sleep):
+        mock_run.return_value = self.fail("gh: Bad credentials (HTTP 401)")
+        with self.assertRaises(GitHubAuthError):
+            run_query("query { x }")
+        self.assertEqual(mock_run.call_count, 1)
