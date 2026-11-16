@@ -47,7 +47,7 @@ Everything else (trend discovery, lateral-use theorizing, viability) moves to a 
 
 | Keep | Remove (moves to new repo or is deleted) |
 |---|---|
-| `categorize.py`, `categorizer.py`, `config.py`, `gh_client.py`, `logger.py` | `discover_repos.py`, `.github/workflows/discover-repos.yml` |
+| `categorize.py`, `categorizer.py`, `config.py`, `gh_client.py`, `logger.py` | `discover_repos.py`, `.github/workflows/discover-repos.yml` (reuse map: `adaptive-radiation/docs/REUSE.md`, pinned at `70fb21f`) |
 | `uncategorized_repos` table (review list) | `probe_ollama_models.py`, workflow, `ollama_model_metrics` table |
 | `maintenance.yml` (with the `GH_TOKEN` preflight) | `discovered_repos` table, `issue_manager.py` discovery-issue code |
 | `state.db` cache + `state-backup` branch | stray `test_fix.py`, `test_pipeline.py`; tracked `__pycache__` |
