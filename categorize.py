@@ -30,8 +30,12 @@ def _env_int(name: str, default: int) -> int:
         raise ConfigError(f"{name} must be an integer, got {raw!r}")
 
 
-def run(client, config: dict) -> dict:
-    """Do one organizing pass. Returns counters for logging/tests."""
+def run(client, config: dict, extra_lists: dict | None = None) -> dict:
+    """Do one organizing pass. Returns counters for logging/tests.
+
+    extra_lists: {name: id} of lists that do not exist yet (bootstrap dry-run preview);
+    they join the inventory as empty lists so keyword profiles can match.
+    """
     max_new_per_week = _env_int("MAX_NEW_LIST_PER_WEEK", 1)
     max_stars = _env_int("MAX_STARS_PER_RUN", 500)
     max_assign = _env_int("MAX_ASSIGN_PER_RUN", 100)
@@ -41,6 +45,8 @@ def run(client, config: dict) -> dict:
     stats = {"assigned": 0, "by_parent": 0, "created_lists": 0, "unplaced": 0}
 
     inventory = star_lists.fetch_list_inventory(client)
+    for name, lid in (extra_lists or {}).items():
+        inventory.setdefault(name, {"id": lid, "members": []})
     membership = star_lists.membership_map(inventory)
     logger.info(f"Inventory: {len(inventory)} lists, {len(membership)} repos already listed")
 
