@@ -8,7 +8,12 @@ class GitHubAPIError(Exception):
     pass
 
 
-def run_query(query: str, variables: dict[str, str] | None = None) -> dict:
+class GitHubAuthError(GitHubAPIError):
+    """Raised when GH_TOKEN is missing, expired, or revoked (HTTP 401)."""
+    pass
+
+
+def run_query(query: str, variables: dict[str, str | list[str]] | None = None) -> dict:
     """
     Execute a GraphQL query against GitHub API via gh CLI.
 
@@ -27,13 +32,23 @@ def run_query(query: str, variables: dict[str, str] | None = None) -> dict:
     # Add variables to command
     if variables:
         for key, value in variables.items():
-            cmd.extend(["-f", f"{key}={value}"])
+            if isinstance(value, (list, tuple)):
+                for item in value:  # gh encodes key[]=v as a JSON array
+                    cmd.extend(["-f", f"{key}[]={item}"])
+            else:
+                cmd.extend(["-f", f"{key}={value}"])
 
     # Execute gh command
     result = subprocess.run(cmd, capture_output=True, text=True)
 
     # Check for command failures
     if result.returncode != 0:
+        stderr = result.stderr or ""
+        if "401" in stderr or "Bad credentials" in stderr:
+            raise GitHubAuthError(
+                "GH_TOKEN is expired, revoked, or invalid (HTTP 401). "
+                "Rotate the GH_TOKEN repository secret."
+            )
         raise GitHubAPIError(f"GitHub API error: {result.stderr}")
 
     # Parse JSON response
@@ -46,7 +61,7 @@ def run_query(query: str, variables: dict[str, str] | None = None) -> dict:
 class GitHubClient:
     """Wrapper for GitHub API operations via gh CLI."""
 
-    def run_query(self, query: str, variables: dict[str, str] | None = None) -> dict:
+    def run_query(self, query: str, variables: dict[str, str | list[str]] | None = None) -> dict:
         """
         Execute a GraphQL query against GitHub API.
 

@@ -203,14 +203,14 @@ class TestPackageImports(unittest.TestCase):
         from github_star_organizer.logger import get_logger
 
         logger_cat = get_logger("categorize")
-        logger_dist = get_logger("distill")
+        logger_dist = get_logger("discover")
 
         self.assertEqual(logger_cat.name, "categorize")
-        self.assertEqual(logger_dist.name, "distill")
+        self.assertEqual(logger_dist.name, "discover")
 
     def test_entry_scripts_exist(self):
         """Test that entry-point scripts exist"""
-        scripts = ["categorize.py", "distill.py", "discover_repos.py"]
+        scripts = ["categorize.py", "discover_repos.py"]
         base_dir = Path(__file__).parent.parent.parent
 
         for script in scripts:

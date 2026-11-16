@@ -39,6 +39,13 @@ def init_db() -> None:
             )
         """)
         conn.execute("""
+            CREATE TABLE IF NOT EXISTS created_lists (
+                name TEXT PRIMARY KEY,
+                list_id TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )
+        """)
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS uncategorized_repos (
                 name_with_owner TEXT PRIMARY KEY,
                 description TEXT,
@@ -116,26 +123,6 @@ def get_uncategorized_repos() -> set[str]:
     with _conn() as conn:
         rows = conn.execute("SELECT name_with_owner FROM uncategorized_repos").fetchall()
     return {row[0] for row in rows}
-
-
-def get_uncategorized_repos_full() -> list[dict]:
-    """Return all pending uncategorized repos with their stored metadata."""
-    with _conn() as conn:
-        rows = conn.execute(
-            "SELECT name_with_owner, description, topics FROM uncategorized_repos"
-        ).fetchall()
-    return [dict(row) for row in rows]
-
-
-def clear_uncategorized_repos(names: list[str]) -> None:
-    """Remove repos from the pending table once they've been distilled into config.json."""
-    if not names:
-        return
-    with _conn() as conn:
-        conn.executemany(
-            "DELETE FROM uncategorized_repos WHERE name_with_owner = ?",
-            [(name,) for name in names],
-        )
 
 
 def insert_uncategorized_repos(repos: list[dict]) -> None:
@@ -314,3 +301,23 @@ def get_sorted_ollama_models(base_models: list[str], skip_gated: bool = True) ->
         else base_models
     )
     return sorted(candidates, key=score_model, reverse=True)
+
+
+def record_created_list(name: str, list_id: str) -> None:
+    """Remember a Star List this tool created, for the weekly creation cap."""
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    with _conn() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO created_lists (name, list_id, created_at) VALUES (?, ?, ?)",
+            (name, list_id, now),
+        )
+
+
+def count_lists_created_since(days: int = 7) -> int:
+    cutoff = (datetime.datetime.now(datetime.timezone.utc)
+              - datetime.timedelta(days=days)).isoformat()
+    with _conn() as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) FROM created_lists WHERE created_at >= ?", (cutoff,)
+        ).fetchone()
+    return int(row[0])

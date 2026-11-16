@@ -53,7 +53,7 @@ class TestInitDb:
         finally:
             conn.close()
 
-        assert len(tables) == 3
+        assert len(tables) == 4
 
 
 class TestDiscoveredRepos:
@@ -333,51 +333,6 @@ class TestUncategorizedRepos:
         result = state_db.get_uncategorized_repos()
         assert len(result) == 1
 
-    def test_get_uncategorized_repos_full(self, temp_db):
-        """Verify get_uncategorized_repos_full returns full repo metadata."""
-        state_db.init_db()
-
-        repos = [
-            {
-                "nameWithOwner": "owner/repo",
-                "description": "Test description",
-                "repositoryTopics": {"nodes": [{"topic": {"name": "python"}}]},
-            }
-        ]
-        state_db.insert_uncategorized_repos(repos)
-
-        result = state_db.get_uncategorized_repos_full()
-        assert len(result) == 1
-        assert result[0]["name_with_owner"] == "owner/repo"
-        assert result[0]["description"] == "Test description"
-        assert result[0]["topics"] == "python"
-
-    def test_clear_uncategorized_repos(self, temp_db):
-        """Verify clear_uncategorized_repos removes the given repos."""
-        state_db.init_db()
-
-        repos = [
-            {"nameWithOwner": "owner/repo1", "description": "1", "repositoryTopics": {"nodes": []}},
-            {"nameWithOwner": "owner/repo2", "description": "2", "repositoryTopics": {"nodes": []}},
-        ]
-        state_db.insert_uncategorized_repos(repos)
-
-        state_db.clear_uncategorized_repos(["owner/repo1"])
-
-        result = state_db.get_uncategorized_repos()
-        assert result == {"owner/repo2"}
-
-    def test_clear_uncategorized_repos_empty_list(self, temp_db):
-        """Verify clear_uncategorized_repos is a no-op for an empty list."""
-        state_db.init_db()
-        repos = [{"nameWithOwner": "owner/repo", "description": "1", "repositoryTopics": {"nodes": []}}]
-        state_db.insert_uncategorized_repos(repos)
-
-        state_db.clear_uncategorized_repos([])
-
-        result = state_db.get_uncategorized_repos()
-        assert result == {"owner/repo"}
-
 
 class TestConnectionErrorHandling:
     def test_rollback_on_exception(self, temp_db):
@@ -551,3 +506,20 @@ class TestOllamaModelMetrics:
         result = state_db.get_sorted_ollama_models(["reliable", "redundant"])
         assert result[0] == "reliable"
         assert result[1] == "redundant"
+
+
+class TestCreatedLists:
+    def test_counts_only_recent(self, temp_db):
+        state_db.init_db()
+        assert state_db.count_lists_created_since(7) == 0
+        state_db.record_created_list("Fresh", "L1")
+        assert state_db.count_lists_created_since(7) == 1
+        with state_db._conn() as conn:
+            conn.execute("UPDATE created_lists SET created_at = '2020-01-01T00:00:00+00:00'")
+        assert state_db.count_lists_created_since(7) == 0
+
+    def test_record_is_idempotent_per_name(self, temp_db):
+        state_db.init_db()
+        state_db.record_created_list("Same", "L1")
+        state_db.record_created_list("Same", "L2")
+        assert state_db.count_lists_created_since(7) == 1

@@ -2,10 +2,20 @@ import unittest
 from unittest.mock import patch, MagicMock
 import json
 import subprocess
-from github_star_organizer.gh_client import run_query, GitHubAPIError
+from github_star_organizer.gh_client import run_query, GitHubAPIError, GitHubAuthError
 
 
 class TestRunQuery(unittest.TestCase):
+    @patch("subprocess.run")
+    def test_run_query_bad_credentials_raises_auth_error(self, mock_run):
+        """401 maps to GitHubAuthError with an actionable message"""
+        mock_run.return_value = MagicMock(
+            returncode=1, stdout="", stderr="gh: Bad credentials (HTTP 401)")
+        with self.assertRaises(GitHubAuthError) as ctx:
+            run_query("query { viewer { login } }")
+        self.assertIn("Rotate the GH_TOKEN", str(ctx.exception))
+        self.assertIsInstance(ctx.exception, GitHubAPIError)
+
     @patch("subprocess.run")
     def test_run_query_success(self, mock_run):
         """Test successful GraphQL query execution"""
@@ -76,3 +86,14 @@ class TestRunQuery(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestListVariables(unittest.TestCase):
+    @patch("subprocess.run")
+    def test_list_values_become_array_args(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=0, stdout="{}", stderr="")
+        run_query("mutation($ids: [ID!]!) { x }", {"ids": ["a", "b"], "n": "1"})
+        cmd = mock_run.call_args[0][0]
+        self.assertIn("ids[]=a", cmd)
+        self.assertIn("ids[]=b", cmd)
+        self.assertIn("n=1", cmd)
