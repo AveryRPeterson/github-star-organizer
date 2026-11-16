@@ -1,11 +1,19 @@
 import subprocess
 import json
+import re
 import sys
+import time
 
 
 class GitHubAPIError(Exception):
     """Raised when GitHub API call fails."""
     pass
+
+
+# Transient server-side failures worth retrying (gateway errors and timeouts).
+_TRANSIENT = re.compile(r"HTTP (502|503|504)|timed? ?out|connection reset|EOF", re.I)
+MAX_ATTEMPTS = 4
+BACKOFF_SECONDS = 2.0
 
 
 class GitHubAuthError(GitHubAPIError):
@@ -38,12 +46,16 @@ def run_query(query: str, variables: dict[str, str | list[str]] | None = None) -
             else:
                 cmd.extend(["-f", f"{key}={value}"])
 
-    # Execute gh command
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    # Execute gh command, retrying transient 5xx/timeouts with exponential backoff
+    for attempt in range(1, MAX_ATTEMPTS + 1):
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        stderr = result.stderr or ""
+        if result.returncode == 0 or attempt == MAX_ATTEMPTS or not _TRANSIENT.search(stderr):
+            break
+        time.sleep(BACKOFF_SECONDS * 2 ** (attempt - 1))
 
     # Check for command failures
     if result.returncode != 0:
-        stderr = result.stderr or ""
         if "401" in stderr or "Bad credentials" in stderr:
             raise GitHubAuthError(
                 "GH_TOKEN is expired, revoked, or invalid (HTTP 401). "

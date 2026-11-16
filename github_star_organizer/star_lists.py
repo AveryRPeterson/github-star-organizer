@@ -13,54 +13,73 @@ REPO_FIELDS = """
   repositoryTopics(first: 10) { nodes { topic { name } } }
 """
 
+# Members only need what the matcher learns from; keep these queries light. A single query nesting
+# lists x items x topics times out (HTTP 502), so lists and items are fetched separately.
+MEMBER_FIELDS = """
+  id
+  nameWithOwner
+  description
+  repositoryTopics(first: 10) { nodes { topic { name } } }
+"""
+LISTS_PAGE = 50
+ITEMS_PAGE = 50
+STARS_PAGE = 50
+
 _LISTS_Q = """
 query($cursor: String) {
   viewer {
-    lists(first: 50, after: $cursor) {
-      nodes {
-        id
-        name
-        items(first: 100) {
-          nodes { ... on Repository { %s } }
-          pageInfo { hasNextPage endCursor }
-        }
-      }
+    lists(first: %d, after: $cursor) {
+      nodes { id name }
       pageInfo { hasNextPage endCursor }
     }
   }
 }
-""" % REPO_FIELDS
+""" % LISTS_PAGE
 
 _ITEMS_Q = """
 query($listId: ID!, $cursor: String) {
   node(id: $listId) {
     ... on UserList {
-      items(first: 100, after: $cursor) {
+      items(first: %d, after: $cursor) {
         nodes { ... on Repository { %s } }
         pageInfo { hasNextPage endCursor }
       }
     }
   }
 }
-""" % REPO_FIELDS
+""" % (ITEMS_PAGE, MEMBER_FIELDS)
 
 _STARS_Q = """
 query($cursor: String) {
   viewer {
-    starredRepositories(first: 100, after: $cursor,
+    starredRepositories(first: %d, after: $cursor,
                         orderBy: {field: STARRED_AT, direction: DESC}) {
       nodes { %s }
       pageInfo { hasNextPage endCursor }
     }
   }
 }
-""" % REPO_FIELDS
+""" % (STARS_PAGE, REPO_FIELDS)
 
 
 def _data(result: dict) -> dict:
     if not result or "data" not in result or result["data"] is None:
         raise GitHubAPIError(f"Unexpected GraphQL response: {str(result)[:200]}")
     return result["data"]
+
+
+def _fetch_list_members(client, list_id: str) -> list[dict]:
+    members: list[dict] = []
+    cursor = None
+    while True:
+        variables = {"listId": list_id}
+        if cursor:
+            variables["cursor"] = cursor
+        items = _data(client.run_query(_ITEMS_Q, variables))["node"]["items"]
+        members.extend(r for r in items["nodes"] if r)
+        if not items["pageInfo"]["hasNextPage"]:
+            return members
+        cursor = items["pageInfo"]["endCursor"]
 
 
 def fetch_list_inventory(client) -> dict[str, dict]:
@@ -74,16 +93,10 @@ def fetch_list_inventory(client) -> dict[str, dict]:
         variables = {"cursor": cursor} if cursor else None
         lists = _data(client.run_query(_LISTS_Q, variables))["viewer"]["lists"]
         for node in lists["nodes"]:
-            items = node["items"]
-            members = [r for r in items["nodes"] if r]
-            more = items["pageInfo"]
-            while more["hasNextPage"]:
-                page = _data(client.run_query(
-                    _ITEMS_Q, {"listId": node["id"], "cursor": more["endCursor"]}
-                ))["node"]["items"]
-                members.extend(r for r in page["nodes"] if r)
-                more = page["pageInfo"]
-            inventory[node["name"]] = {"id": node["id"], "members": members}
+            inventory[node["name"]] = {
+                "id": node["id"],
+                "members": _fetch_list_members(client, node["id"]),
+            }
         if not lists["pageInfo"]["hasNextPage"]:
             return inventory
         cursor = lists["pageInfo"]["endCursor"]

@@ -34,10 +34,11 @@ class FakeClient:
             self.assigned.append((variables["repoId"], variables["listIds"]))
             return {"data": {}}
         if "viewer" in query and "lists(" in query:
-            nodes = [{"id": lid, "name": n,
-                      "items": {"nodes": members, "pageInfo": {"hasNextPage": False, "endCursor": None}}}
-                     for n, (lid, members) in self.lists.items()]
+            nodes = [{"id": lid, "name": n} for n, (lid, _m) in self.lists.items()]
             return {"data": {"viewer": {"lists": {"nodes": nodes, "pageInfo": {"hasNextPage": False, "endCursor": None}}}}}
+        if "node(id: $listId)" in query:
+            members = next(m for _n, (lid, m) in self.lists.items() if lid == variables["listId"])
+            return {"data": {"node": {"items": {"nodes": members, "pageInfo": {"hasNextPage": False, "endCursor": None}}}}}
         if "starredRepositories" in query:
             return {"data": {"viewer": {"starredRepositories": {
                 "nodes": self.stars, "pageInfo": {"hasNextPage": False, "endCursor": None}}}}}
