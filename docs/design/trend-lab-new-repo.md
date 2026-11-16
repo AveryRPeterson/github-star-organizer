@@ -1,6 +1,6 @@
-# gather-volution: discover -> ideate -> pathway to viability
+# discover -> ideate -> pathway to viability (working title: gather-volution)
 
-**Date:** 2026-11-15 | **Status:** Design only, no code | **Name:** `gather-volution` (private repo; name is provisional)
+**Date:** 2026-11-15 | **Status:** Design only, no code | **Name:** undecided (private repo). Original working name `gather-volution`; see "Naming" below
 **Not created yet:** repo creation is outside the session that wrote this; create it empty and copy this file to `docs/DESIGN.md`.
 **Origin:** extracted from `github-star-organizer` (epic #194, issues #195-#201). This file is
 written to be copied into the new repo's `docs/DESIGN.md` unchanged.
@@ -87,11 +87,24 @@ Only ideas with verdict `pursue` leave this repo, as one `briefs/<idea_id>.json`
 
 | Field | Meaning | strata counterpart |
 |---|---|---|
-| `goal`, `sense` | what to optimize, maximize or minimize | `DesignProblem.goal`, `sense` |
-| `end_constraints[]` | hard limits derived from the viability rubric (licence, cost ceiling, safety/boundary notes) | `DesignProblem.constraints`, checked at every tier |
-| `seed_repos[]` | the source repos and their pinned commits | initial candidate pool |
-| `proposed_tiers[]` | cheap-to-expensive checks that could screen a candidate (T0 shape/licence checks, T1 quick prototype or simulation, T2 real-world signal) | `Adapter` fidelity tiers |
-| `budget_hint`, `uncertainty_notes` | what we could not ground | `budget`, `kappa` discussion |
+| `problem_id` | stable id, e.g. the idea id | `DesignProblem.problem_id` |
+| `description` | the goal in one paragraph | `DesignProblem.description` |
+| `sense` | `MAXIMIZE` or `MINIMIZE` | `DesignProblem.sense` |
+| `constraints{}` | hard limits from the viability rubric (licence, cost ceiling, safety/boundary notes) | `DesignProblem.constraints`, checked at every tier |
+| `budget`, `kappa` | spend ceiling and risk appetite, in **one cost unit per problem** (strata's rule; use USD) | `DesignProblem.budget`, `kappa` |
+| `metadata{}` | seed repos with pinned commits, source ideas, `uncertainty_notes` (what we could not ground) | `DesignProblem.metadata` |
+| `proposed_tiers[]` | cheap-to-expensive checks that could screen a candidate (T0 shape/licence check, T1 quick prototype or simulation, T2 real-world signal) | `Adapter` fidelity `T0/T1/T2` |
+
+Field names above are copied from `strata/types.py` (`DesignProblem`, `EvalResult`, `Fidelity`,
+`Sense`) at commit `75cef5a`. strata's `CLAUDE.md` forbids a `domain` field on adapters, so the
+brief carries domain context in `metadata`, never as a top-level typing key.
+
+### The seam: "ecotone"
+An ecotone is the transition zone where two ecosystems meet. Use it for the contract, not for
+either repo: a versioned JSON Schema (`ecotone/brief.schema.json`) plus a `briefs/*.ecotone.json`
+convention, copied (not imported) into both repos with a `schema_version` field. Either side may
+change independently as long as it honours the version. YAGNI: no shared package until a second
+consumer exists.
 
 gather-volution never imports strata; the brief is plain JSON so either side can change
 independently. strata's `sketch` "POD niches" domain (cached scores / scoring API / live listing
@@ -153,11 +166,59 @@ branch (proven pattern in the origin repo; the backup step must run `if: always(
 Do **not** carry over: `issue_manager.py` per-repo issues, `categorize.py`, Star Lists, keyword
 config, `distill.py`.
 
+## LLM plan
+
+| Tier | Provider | Used for | Cost model |
+|---|---|---|---|
+| Free (default) | Ollama Cloud | S2 re-rank, S3 mechanism extraction, S4 first-pass ideas, most evals | Quota, not dollars |
+| Paid (explicit) | NanoGPT, pay-as-you-go | S4 critique pass, S5 viability on the top ~3 ideas, finalist re-scoring | USD, hard cap **$1.50 / rolling 7 days** |
+
+**Ollama Cloud free tier.** Public sources agree on the shape and disagree on the numbers: a
+session window (resets about every 5 hours), a weekly window, **one concurrent cloud model**, and
+usage measured by GPU time rather than tokens, so heavier models burn quota faster. No reliable
+published RPM/TPM figures. So the client must discover limits instead of assuming them:
+- Concurrency 1. Retry on 429 and 5xx with exponential backoff honouring `Retry-After`.
+- A `quota_events` table (timestamp, model, tokens, latency, status). Treat the first 429 in a
+  window as the observed ceiling and stop for that window.
+- Work is **resumable**: each item's state lives in `state.db`, so quota exhaustion mid-run defers
+  the rest to the next run. It is never an error and never silently falls through to paid.
+- Prefer small daily batches over one weekly burst, to fit the session window.
+- Choose the smallest model that passes the eval harness (S6), since heavier models cost more quota.
+
+**NanoGPT.** OpenAI-compatible chat completions (`/api/v1/chat/completions`; confirm the base URL
+against docs.nano-gpt.com before coding). Billed per model list price; the docs describe an
+explicit pay-as-you-go override. Rules:
+- Paid calls only when the caller sets `paid=True`. Default is free; the router never upgrades
+  silently.
+- Before every call, compute the **worst-case** cost (input tokens + `max_tokens` x live price from
+  the model list) and refuse if it would push the rolling 7-day sum past the cap.
+- Split the cap: ~70% S5 viability, ~20% S4 critique, ~10% reserve. Unused budget does not roll over.
+- All spend is recorded in `run_costs` in USD, using strata's convention that cost has one unit
+  per problem. Free-tier calls record `cost=0` plus quota units in `provenance`.
+- Secrets: `OLLAMA_CLOUD_KEY` (already used by the origin repo) and `NANOGPT_API_KEY` (new).
+
+The router is about 100 lines: `complete(task, messages, paid=False)` -> text + a cost record.
+If `AveryRPeterson/llm-gateway-router` already does this, reuse it instead of writing a new one.
+
+## Naming
+
+Candidates considered and how they fit what this repo does (one lineage of mechanism spreading
+into many new niches, ending in a viability pathway):
+- **Adaptive Radiation** (`adaptive-radiation`): one ancestor diversifies into many forms filling
+  new niches. That is S4 almost literally, and "niche" is already strata's vocabulary. *Recommended.*
+  `ada-rad` reads oddly (Ada, radiation); prefer the full slug.
+- **Speciation Pump** (`spec-pump`): good for ideation, weaker on discovery and viability.
+- **Refugium**: where species survive a bad period; fits a ledger/archive more than a pipeline.
+- **Trophic Cascade** (`trophicade`): top-down effects; no obvious mapping.
+- **Evolutionary Cradle / Ecological Crucible / Alchemize / Bloom**: evoke "evolution", which is
+  strata's job; risks blurring the boundary.
+- **Ecotone**: best used for the seam contract above rather than a repo.
+
 ## Open questions for the owner
 
-1. ~~Repo name and visibility~~ Decided: private, `gather-volution` (provisional).
-2. Which LLM provider(s) (DeepSeek only, or add Claude for S4/S5 judgment quality)? Cost cap per
-   weekly run?
+1. Repo name: private; undecided between `adaptive-radiation` (recommended) and the original `gather-volution`. See "Naming".
+2. ~~LLM provider~~ Decided: Ollama Cloud free tier by default, NanoGPT pay-as-you-go for
+   explicit heavy tasks, $1.50 weekly cap.
 3. Digest destination: GitHub issue, committed markdown, or both?
 4. Any domain focus (e.g. developer tools only) to narrow S1 slices, or everything?
 

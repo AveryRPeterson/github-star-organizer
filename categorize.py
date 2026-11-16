@@ -5,6 +5,7 @@ Deterministic (no LLM). Environment:
   MAX_NEW_LIST_PER_WEEK  cap on Star Lists this tool may create per rolling 7 days (default 1)
   MAX_STARS_PER_RUN      newest stars to examine per run (default 500)
   MAX_ASSIGN_PER_RUN     cap on list assignments per run (default 100)
+  DRY_RUN                1/true: log intended changes, mutate nothing
 """
 import os
 import sys
@@ -34,6 +35,9 @@ def run(client, config: dict) -> dict:
     max_new_per_week = _env_int("MAX_NEW_LIST_PER_WEEK", 1)
     max_stars = _env_int("MAX_STARS_PER_RUN", 500)
     max_assign = _env_int("MAX_ASSIGN_PER_RUN", 100)
+    dry = os.getenv("DRY_RUN", "").strip().lower() in ("1", "true", "yes")
+    if dry:
+        logger.info("DRY_RUN: no lists will be created or changed")
     stats = {"assigned": 0, "by_parent": 0, "created_lists": 0, "unplaced": 0}
 
     inventory = star_lists.fetch_list_inventory(client)
@@ -60,7 +64,10 @@ def run(client, config: dict) -> dict:
     def place(repo: dict, list_id: str) -> None:
         if budget["left"] <= 0:
             return
-        star_lists.assign(client, repo["id"], membership.get(repo["id"], set()), list_id)
+        if dry:
+            logger.info(f"[dry-run] would add {repo['nameWithOwner']} to list {list_id}")
+        else:
+            star_lists.assign(client, repo["id"], membership.get(repo["id"], set()), list_id)
         membership.setdefault(repo["id"], set()).add(list_id)
         budget["left"] -= 1
         stats["assigned"] += 1
@@ -92,10 +99,14 @@ def run(client, config: dict) -> dict:
     )
     placed_now: set[str] = set()
     for list_name, members in proposals:
-        list_id = star_lists.create_list(client, list_name)
-        state_db.record_created_list(list_name, list_id)
+        if dry:
+            list_id = f"DRY-{list_name}"
+            logger.info(f"[dry-run] would create list '{list_name}' for {len(members)} repos")
+        else:
+            list_id = star_lists.create_list(client, list_name)
+            state_db.record_created_list(list_name, list_id)
+            logger.info(f"Created list '{list_name}' for {len(members)} repos")
         stats["created_lists"] += 1
-        logger.info(f"Created list '{list_name}' for {len(members)} repos")
         for repo in members:
             place(repo, list_id)
             placed_now.add(repo["nameWithOwner"])
@@ -105,7 +116,7 @@ def run(client, config: dict) -> dict:
     # 4. Whatever is left is recorded for review.
     leftover = [r for r in unmatched if r["nameWithOwner"] not in placed_now]
     stats["unplaced"] = len(leftover)
-    if leftover:
+    if leftover and not dry:
         known = state_db.get_uncategorized_repos()
         fresh = [r for r in leftover if r["nameWithOwner"] not in known]
         if fresh:

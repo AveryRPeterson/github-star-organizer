@@ -333,51 +333,6 @@ class TestUncategorizedRepos:
         result = state_db.get_uncategorized_repos()
         assert len(result) == 1
 
-    def test_get_uncategorized_repos_full(self, temp_db):
-        """Verify get_uncategorized_repos_full returns full repo metadata."""
-        state_db.init_db()
-
-        repos = [
-            {
-                "nameWithOwner": "owner/repo",
-                "description": "Test description",
-                "repositoryTopics": {"nodes": [{"topic": {"name": "python"}}]},
-            }
-        ]
-        state_db.insert_uncategorized_repos(repos)
-
-        result = state_db.get_uncategorized_repos_full()
-        assert len(result) == 1
-        assert result[0]["name_with_owner"] == "owner/repo"
-        assert result[0]["description"] == "Test description"
-        assert result[0]["topics"] == "python"
-
-    def test_clear_uncategorized_repos(self, temp_db):
-        """Verify clear_uncategorized_repos removes the given repos."""
-        state_db.init_db()
-
-        repos = [
-            {"nameWithOwner": "owner/repo1", "description": "1", "repositoryTopics": {"nodes": []}},
-            {"nameWithOwner": "owner/repo2", "description": "2", "repositoryTopics": {"nodes": []}},
-        ]
-        state_db.insert_uncategorized_repos(repos)
-
-        state_db.clear_uncategorized_repos(["owner/repo1"])
-
-        result = state_db.get_uncategorized_repos()
-        assert result == {"owner/repo2"}
-
-    def test_clear_uncategorized_repos_empty_list(self, temp_db):
-        """Verify clear_uncategorized_repos is a no-op for an empty list."""
-        state_db.init_db()
-        repos = [{"nameWithOwner": "owner/repo", "description": "1", "repositoryTopics": {"nodes": []}}]
-        state_db.insert_uncategorized_repos(repos)
-
-        state_db.clear_uncategorized_repos([])
-
-        result = state_db.get_uncategorized_repos()
-        assert result == {"owner/repo"}
-
 
 class TestConnectionErrorHandling:
     def test_rollback_on_exception(self, temp_db):

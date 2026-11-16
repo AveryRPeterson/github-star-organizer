@@ -123,6 +123,16 @@ class TestRun(unittest.TestCase):
         stats = self.run_with(client, MAX_ASSIGN_PER_RUN="2")
         self.assertEqual(stats["assigned"], 2)
 
+    def test_dry_run_mutates_nothing(self):
+        stars = [repo("R1", "x/swarm", "multi agent llm", ["llm", "agents"])] + self.cluster("quantum-computing", 3)
+        client = FakeClient({"AI": ("L_AI", self.ai_members)}, stars)
+        stats = self.run_with(client, DRY_RUN="1", MAX_NEW_LIST_PER_WEEK="1")
+        self.assertEqual(client.assigned, [])
+        self.assertEqual(client.created, [])
+        self.assertEqual(state_db.count_lists_created_since(7), 0)
+        self.assertEqual(stats["assigned"], 4)          # what it WOULD have done
+        self.assertEqual(stats["created_lists"], 1)
+
     def test_bad_env_value_is_config_error(self):
         client = FakeClient({"AI": ("L_AI", self.ai_members)}, [])
         from github_star_organizer.config import ConfigError

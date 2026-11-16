@@ -32,8 +32,7 @@ Everything else (trend discovery, lateral-use theorizing, viability) moves to a 
    `uncategorized_repos`.
 6. **Apply** via `updateUserListsForItem`, **additively**: send the repo's current list IDs plus
    the new one. Never overwrite existing membership.
-7. **Record** unplaceable repos in `state.db.uncategorized_repos` for `distill.py` keyword growth
-   (existing behaviour, kept).
+7. **Record** unplaceable repos in `state.db.uncategorized_repos` for manual review.
 
 ## Bugs to fix on the way (found in review)
 
@@ -49,7 +48,7 @@ Everything else (trend discovery, lateral-use theorizing, viability) moves to a 
 | Keep | Remove (moves to new repo or is deleted) |
 |---|---|
 | `categorize.py`, `categorizer.py`, `config.py`, `gh_client.py`, `logger.py` | `discover_repos.py`, `.github/workflows/discover-repos.yml` |
-| `distill.py` + `uncategorized_repos` table | `probe_ollama_models.py`, workflow, `ollama_model_metrics` table |
+| `uncategorized_repos` table (review list) | `probe_ollama_models.py`, workflow, `ollama_model_metrics` table |
 | `maintenance.yml` (with the `GH_TOKEN` preflight) | `discovered_repos` table, `issue_manager.py` discovery-issue code |
 | `state.db` cache + `state-backup` branch | stray `test_fix.py`, `test_pipeline.py`; tracked `__pycache__` |
 
@@ -64,9 +63,18 @@ long-lived token and rotate on a calendar reminder.
 
 ## Work breakdown
 
-1. Fix pagination + additive mutation, with tests (highest value, fixes data-loss risk).
-2. Resolve list IDs by name; drop empty IDs from `config.json`.
-3. Fork/mirror canonical resolution.
-4. LLM classification constrained to existing list names (reuse `call_deepseek` pattern in `distill.py`).
-5. Process full backlog in batches with a per-run cap.
-6. After new repo is bootstrapped: delete discovery code, workflows, tables; update README.
+1. [x] Fix pagination + additive mutation, with tests.
+2. [x] Resolve list IDs by name at runtime.
+3. [x] Fork/mirror canonical resolution.
+4. [x] Deterministic matcher replaces keyword/LLM classification; `distill.py` removed.
+5. [x] Full backlog per run with caps (`MAX_STARS_PER_RUN`, `MAX_ASSIGN_PER_RUN`).
+6. [ ] First dry run on the real account; tune thresholds from the log.
+7. [ ] After the new repo has what it needs: delete discovery code, workflows, tables (#202).
+
+## Status (2026-11-16)
+
+Done: pagination, additive assignment, fork/mirror resolution, deterministic matcher, capped
+list creation, `DRY_RUN`, `distill.py` removed (LLM no longer used anywhere in the organizer),
+stray `test_fix.py`/`test_pipeline.py` removed, `__pycache__` untracked. Remaining: first
+dry run against the real account to tune `accept_threshold` / `min_cluster`, then delete the
+discovery code once the new repo has what it needs.

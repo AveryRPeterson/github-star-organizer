@@ -6,7 +6,7 @@ A GitHub Actions workflow system that automatically discovers, categorizes, and 
 
 - **Discover Interesting Repos**: Dual-model AI analysis (DeepSeek + Ollama) identifies 13 unique repositories per week that are unusual, innovative, or solve problems in creative ways
 - **Keyword-Based Categorization**: Automatically categorizes repositories by topic using configurable keywords
-- **Weekly Organization**: Creates GitHub issues for interesting discoveries with AI-generated summaries; uncategorized popular repositories are tracked in a local state DB (no issue/comment noise) for later keyword-growth distillation
+- **Weekly Organization**: Creates GitHub issues for interesting discoveries with AI-generated summaries; repos the organizer cannot place are tracked in a local state DB (no issue/comment noise)
 - **Smart Deduplication**: Removes already-starred repos and previously flagged discoveries to prevent redundant suggestions
 
 ## Workflows
@@ -24,9 +24,8 @@ Runs weekly (Saturdays 11pm UTC) to discover new interesting repositories:
 ### organize.yml
 Automatically stars/unstarred repos based on discovery issue state
 
-### distill.py
-Reads pending uncategorized repos from the state DB and uses DeepSeek to
-suggest `config.json` keyword/category updates, opening a PR with the result
+### maintenance.yml
+Daily. Places starred repos that are in no Star List into the best-fitting list (deterministic, no LLM; see `docs/design/organizer-scope.md`). `MAX_NEW_LIST_PER_WEEK` (default 1) caps new-list creation; manual runs default to a dry run.
 
 ## Configuration
 
@@ -60,7 +59,6 @@ python -m pytest tests/unit/ -v
 │   ├── issue_manager.py    # Discovery issue creation
 │   └── state_db.py         # SQLite state (dedup, uncategorized tracking)
 ├── discover_repos.py       # Main discovery workflow
-├── distill.py              # Category consolidation
 ├── config.json             # Configuration
 └── tests/                  # Unit tests
 ```
