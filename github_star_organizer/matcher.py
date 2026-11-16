@@ -95,6 +95,11 @@ def score_repo(repo: dict, profiles: dict[str, Counter]) -> dict[str, float]:
     return scores
 
 
+# Absolute minimum score for placing into an existing list, however many lists exist.
+# Below this the fit is too weak to trust; the repo stays unplaced instead.
+MIN_ACCEPT = 0.30
+
+
 def accept_threshold(n_lists: int, base: float = 0.45, floor: float = 0.12,
                      scale: float = 6.0) -> float:
     """Minimum score to accept an existing list. Falls as lists accumulate, so the
@@ -108,7 +113,7 @@ def best_match(repo: dict, profiles: dict[str, Counter]) -> tuple[str | None, fl
     if not scores:
         return None, 0.0
     name = max(sorted(scores), key=lambda n: scores[n])
-    if scores[name] >= accept_threshold(len(profiles)):
+    if scores[name] >= max(MIN_ACCEPT, accept_threshold(len(profiles))):
         return name, scores[name]
     return None, scores[name]
 

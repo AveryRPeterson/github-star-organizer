@@ -108,3 +108,15 @@ class TestNewLists(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestMinAccept(unittest.TestCase):
+    def test_floor_blocks_weak_match_even_with_many_lists(self):
+        lists = {f"L{i}": {"members": [], "keywords": [f"zz{i}"]} for i in range(40)}
+        lists["AI"] = {"members": [], "keywords": ["llm", "agent", "model", "prompt", "chat", "rag"]}
+        profiles = m.build_profiles(lists)
+        r = repo("x/odd", "an llm agent thing for building widgets", [])
+        name, score = m.best_match(r, profiles)
+        self.assertGreaterEqual(score, m.accept_threshold(len(profiles)))
+        self.assertLess(score, m.MIN_ACCEPT)
+        self.assertIsNone(name)
